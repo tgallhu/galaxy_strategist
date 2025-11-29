@@ -1,0 +1,1653 @@
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// --- AUDIO SYSTEM ---
+const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+let audioEnabled = true;
+
+const sounds = {
+    // Player shoot sound - short laser burst
+    playerShoot: (audioCtx) => {
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        oscillator.type = 'square';
+        oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.1);
+
+        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        oscillator.start(audioCtx.currentTime);
+        oscillator.stop(audioCtx.currentTime + 0.1);
+    },
+
+    // Enemy hit - shield damage
+    enemyHit: (audioCtx) => {
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        oscillator.type = 'sawtooth';
+        oscillator.frequency.setValueAtTime(150, audioCtx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.15);
+
+        gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        oscillator.start(audioCtx.currentTime);
+        oscillator.stop(audioCtx.currentTime + 0.15);
+    },
+
+    // Enemy destroyed - explosion
+    enemyDestroy: (audioCtx) => {
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        oscillator.type = 'sawtooth';
+        oscillator.frequency.setValueAtTime(400, audioCtx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(20, audioCtx.currentTime + 0.3);
+
+        gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        oscillator.start(audioCtx.currentTime);
+        oscillator.stop(audioCtx.currentTime + 0.3);
+    },
+
+    // Shield hit
+    shieldHit: (audioCtx) => {
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(300, audioCtx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.2);
+
+        gainNode.gain.setValueAtTime(0.12, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        oscillator.start(audioCtx.currentTime);
+        oscillator.stop(audioCtx.currentTime + 0.2);
+    },
+
+    // Hull damage
+    hullHit: (audioCtx) => {
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        oscillator.type = 'triangle';
+        oscillator.frequency.setValueAtTime(200, audioCtx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.4);
+
+        gainNode.gain.setValueAtTime(0.25, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        oscillator.start(audioCtx.currentTime);
+        oscillator.stop(audioCtx.currentTime + 0.4);
+    },
+
+    // Powerup collected
+    powerup: (audioCtx) => {
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(400, audioCtx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.2);
+
+        gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        oscillator.start(audioCtx.currentTime);
+        oscillator.stop(audioCtx.currentTime + 0.2);
+    },
+
+    // Weapon jammed
+    weaponJam: (audioCtx) => {
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        oscillator.type = 'square';
+        oscillator.frequency.setValueAtTime(100, audioCtx.currentTime);
+
+        gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        oscillator.start(audioCtx.currentTime);
+        oscillator.stop(audioCtx.currentTime + 0.3);
+    },
+
+    // Level complete
+    levelComplete: (audioCtx) => {
+        [400, 500, 600, 800].forEach((freq, i) => {
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(freq, audioCtx.currentTime + i * 0.1);
+
+            gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime + i * 0.1);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + i * 0.1 + 0.3);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.start(audioCtx.currentTime + i * 0.1);
+            oscillator.stop(audioCtx.currentTime + i * 0.1 + 0.3);
+        });
+    },
+
+    // Game over (failure)
+    gameOver: (audioCtx) => {
+        // Descending sad trombone effect
+        [500, 400, 300, 150].forEach((freq, i) => {
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.type = 'sawtooth';
+            oscillator.frequency.setValueAtTime(freq, audioCtx.currentTime + i * 0.15);
+            oscillator.frequency.exponentialRampToValueAtTime(freq * 0.8, audioCtx.currentTime + i * 0.15 + 0.4);
+
+            gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime + i * 0.15);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + i * 0.15 + 0.4);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.start(audioCtx.currentTime + i * 0.15);
+            oscillator.stop(audioCtx.currentTime + i * 0.15 + 0.4);
+        });
+    },
+
+    // Victory (all levels complete)
+    victory: (audioCtx) => {
+        // Triumphant fanfare
+        const melody = [
+            { freq: 523, time: 0 },      // C5
+            { freq: 659, time: 0.15 },   // E5
+            { freq: 784, time: 0.3 },    // G5
+            { freq: 1047, time: 0.45 },  // C6
+            { freq: 784, time: 0.7 },    // G5
+            { freq: 1047, time: 0.85 },  // C6
+            { freq: 1047, time: 1.0 },   // C6 (sustained)
+        ];
+
+        melody.forEach((note, i) => {
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.type = 'square';
+            oscillator.frequency.setValueAtTime(note.freq, audioCtx.currentTime + note.time);
+
+            const duration = i === melody.length - 1 ? 0.6 : 0.15;
+            gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime + note.time);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + note.time + duration);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.start(audioCtx.currentTime + note.time);
+            oscillator.stop(audioCtx.currentTime + note.time + duration);
+        });
+    }
+};
+
+function playSound(soundName) {
+    if (!audioEnabled) return; // Skip if audio is disabled
+    try {
+        if (sounds[soundName]) {
+            sounds[soundName](audioContext);
+        }
+    } catch (e) {
+        console.warn('Audio playback failed:', e);
+    }
+}
+
+function toggleAudio() {
+    audioEnabled = !audioEnabled;
+}
+
+// --- ASSET MANAGEMENT ---
+const assets = {
+    starLayers: []
+};
+
+// Create 3-layer parallax starfield
+for (let layer = 0; layer < 3; layer++) {
+    const stars = [];
+    const numStars = layer === 0 ? 30 : layer === 1 ? 50 : 80;
+    const speed = layer === 0 ? 0.1 : layer === 1 ? 0.3 : 0.5;
+    const maxRadius = layer === 0 ? 1 : layer === 1 ? 1.5 : 2;
+
+    for (let i = 0; i < numStars; i++) {
+        stars.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            radius: Math.random() * maxRadius + 0.5,
+            alpha: Math.random() * 0.5 + 0.3,
+            baseAlpha: Math.random() * 0.5 + 0.3
+        });
+    }
+
+    assets.starLayers.push({ stars, speed });
+}
+
+
+// --- GAME CONSTANTS ---
+const PLAYER_WIDTH = 48; // Matched to sprite
+const PLAYER_HEIGHT = 48; // Matched to sprite
+const PLAYER_SPEED = 6.5; // Increased for smoother, more responsive control
+const BULLET_SPEED = 7;
+const BULLET_RADIUS = 3;
+const GRENADE_SPEED = 5;
+const GRENADE_RADIUS = 5;
+const GRENADE_FRAGMENT_COUNT = 4;
+const GRENADE_FRAGMENT_SPEED = 6;
+const ENEMY_ROWS = 5;
+const ENEMY_COLS = 10;
+const ENEMY_WIDTH = 48; // Matched to sprite
+const ENEMY_HEIGHT = 32; // Matched to sprite
+const ENEMY_GAP = 15;
+let enemySpeedDirection = 1;
+const ENEMY_BULLET_SPEED = 4;
+const ENEMY_BULLET_RADIUS = 3;
+const ENEMY_SHOOT_CHANCE = 0.002;
+
+
+// --- GAME OBJECTS ---
+let player = {
+    x: canvas.width / 2 - PLAYER_WIDTH / 2,
+    y: canvas.height - PLAYER_HEIGHT - 20,
+    width: PLAYER_WIDTH,
+    height: PLAYER_HEIGHT,
+    speed: PLAYER_SPEED,
+    dx: 0,
+    heat: 0,
+    maxHeat: 100,
+    heatPerShot: 8,                    // Overheat in 10 shots
+    heatDissipationRate: 0.5,           // Moderate cooling rate
+    heatDissipationDelay: 500,          // Brief 500ms delay before cooling starts
+    weaponJammed: false,
+    weaponLockoutActive: false,
+    weaponLockoutEndTime: 0,
+    lockoutDuration: 3000,              // 3 second lockout penalty
+    shield: 100,
+    maxShield: 100,
+    shieldRechargeRate: 0.2,
+    shootCooldown: 200, // Reduced for more responsive shooting
+    lastShotTime: 0,
+    lives: 3,
+    maxLives: 3,
+    ammoBoostActive: false,
+    ammoBoostShots: 0,
+    grenades: 1,
+    maxGrenades: 3
+};
+let bullets = [];
+let enemyBullets = [];
+let enemies = [];
+let powerups = [];
+let grenades = []; // Main grenades and fragments
+
+// Powerup constants
+const POWERUP_SIZE = 20;
+const POWERUP_FALL_SPEED = 2;
+const ENEMY_BULLET_DAMAGE = 30;
+
+// Level-specific powerup drop rates and shooting intensity
+const LEVEL_BALANCE = {
+    1: {
+        dropChance: 0.15,        // 15% - Lower since shields are offline
+        livesDropWeight: 0.7,    // 70% lives, 20% shield, 10% ammo
+        shieldDropWeight: 0.2,
+        shootingIntensity: 0.8   // 80% base shooting rate
+    },
+    2: {
+        dropChance: 0.25,        // 25% - Higher to sustain shield
+        livesDropWeight: 0.2,    // 20% lives, 60% shield, 20% ammo
+        shieldDropWeight: 0.6,
+        shootingIntensity: 1.2   // 120% base shooting rate
+    },
+    3: {
+        dropChance: 0.30,        // 30% - Highest due to Sentinels
+        livesDropWeight: 0.3,    // 30% lives, 50% shield, 20% ammo
+        shieldDropWeight: 0.5,
+        shootingIntensity: 1.5   // 150% base shooting rate (intense!)
+    }
+};
+
+
+// --- GAME STATE ---
+let gameStartTime = 0;
+
+// Key state tracking for smoother controls
+const keys = {
+    left: false,
+    right: false,
+    space: false,
+    grenade: false
+};
+let strikeVolumeMultiplier = 1;
+let intensitySpikeActive = false;
+let nextIntensitySpikeTime = 0;
+let intensitySpikeEndTime = 0;
+let currentLevel = 1;
+
+// --- LEVEL DEFINITIONS ---
+const LEVELS = {
+    1: {
+        name: "The Training Grid",
+        formationName: "The Wall",
+        themeColor: "#00FFFF", // Cyan
+        enemyCount: 50,
+        rows: 5,
+        cols: 10,
+        enemyType: "normal",
+        formation: "wall"
+    },
+    2: {
+        name: "Asteroid Field",
+        formationName: "The Funnel",
+        themeColor: "#FFA500", // Orange
+        enemyCount: 40,
+        rows: 4,
+        cols: 10,
+        enemyType: "normal",
+        formation: "funnel"
+    },
+    3: {
+        name: "Sentinel Fortress",
+        formationName: "The Citadel",
+        themeColor: "#4169E1", // Royal Blue
+        enemyCount: 30,
+        rows: 3,
+        cols: 10,
+        enemyType: "sentinel",
+        formation: "citadel"
+    }
+};
+
+
+// --- INITIALIZATION ---
+function createEnemies() {
+    enemies = [];
+    const level = LEVELS[currentLevel];
+
+    switch (level.formation) {
+        case 'wall':
+            createWallFormation(level);
+            break;
+        case 'funnel':
+            createFunnelFormation(level);
+            break;
+        case 'citadel':
+            createCitadelFormation(level);
+            break;
+        default:
+            createWallFormation(level);
+    }
+}
+
+// Level 1: The Wall - Dense 5x10 rectangle
+function createWallFormation(level) {
+    const startX = 60;
+    const startY = 50;
+
+    for (let row = 0; row < level.rows; row++) {
+        for (let col = 0; col < level.cols; col++) {
+            const enemy = {
+                x: col * (ENEMY_WIDTH + ENEMY_GAP) + startX,
+                y: row * (ENEMY_HEIGHT + ENEMY_GAP) + startY,
+                width: ENEMY_WIDTH,
+                height: ENEMY_HEIGHT,
+                type: 'normal'
+            };
+            enemies.push(enemy);
+        }
+    }
+}
+
+// Level 2: The Funnel - V-shape formation
+function createFunnelFormation(level) {
+    const startX = 60;
+    const startY = 50;
+    const cols = level.cols;
+    const centerCol = Math.floor(cols / 2);
+
+    for (let row = 0; row < level.rows; row++) {
+        for (let col = 0; col < cols; col++) {
+            // Calculate Y offset based on distance from center
+            const distanceFromCenter = Math.abs(col - centerCol);
+            const yOffset = distanceFromCenter * (ENEMY_HEIGHT + ENEMY_GAP) * 0.5;
+
+            const enemy = {
+                x: col * (ENEMY_WIDTH + ENEMY_GAP) + startX,
+                y: row * (ENEMY_HEIGHT + ENEMY_GAP) + startY + yOffset,
+                width: ENEMY_WIDTH,
+                height: ENEMY_HEIGHT,
+                type: 'normal'
+            };
+            enemies.push(enemy);
+        }
+    }
+}
+
+// Level 3: The Citadel - 4x4 Sentinel core with Normal shell
+function createCitadelFormation(level) {
+    const startX = 100;
+    const startY = 20; // Pushed higher to leave limited space at bottom
+    const gridSize = 10; // 10x10 total grid
+    const sentinelStartRow = 3;
+    const sentinelStartCol = 3;
+    const sentinelSize = 4;
+
+    for (let row = 0; row < gridSize; row++) {
+        for (let col = 0; col < gridSize; col++) {
+            // Skip empty corners to create shell effect
+            if ((row === 0 || row === 1) && (col === 0 || col === 1)) continue; // Top-left corner
+            if ((row === 0 || row === 1) && (col === 8 || col === 9)) continue; // Top-right corner
+            if ((row === 8 || row === 9) && (col === 0 || col === 1)) continue; // Bottom-left corner
+            if ((row === 8 || row === 9) && (col === 8 || col === 9)) continue; // Bottom-right corner
+
+            // Determine if this position is in the Sentinel core (4x4 center)
+            const isSentinel = (row >= sentinelStartRow && row < sentinelStartRow + sentinelSize) &&
+                               (col >= sentinelStartCol && col < sentinelStartCol + sentinelSize);
+
+            const enemy = {
+                x: col * (ENEMY_WIDTH + ENEMY_GAP) + startX,
+                y: row * (ENEMY_HEIGHT + ENEMY_GAP) + startY,
+                width: ENEMY_WIDTH,
+                height: ENEMY_HEIGHT,
+                type: isSentinel ? 'sentinel' : 'normal'
+            };
+
+            // Sentinel enemies have shields (3 hits to destroy)
+            if (enemy.type === 'sentinel') {
+                enemy.shieldHits = 3;
+            }
+
+            enemies.push(enemy);
+        }
+    }
+}
+
+
+// --- DRAW FUNCTIONS ---
+function drawBackground() {
+    // Base background color
+    ctx.fillStyle = '#000015';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Apply level theme tint
+    const level = LEVELS[currentLevel];
+    if (level) {
+        ctx.fillStyle = level.themeColor;
+        // Level 3: Stronger tint for oppressive Sentinel Fortress atmosphere
+        ctx.globalAlpha = currentLevel === 3 ? 0.12 : 0.05;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Intensity spike screen flash
+    if (intensitySpikeActive) {
+        const flashAlpha = Math.abs(Math.sin(Date.now() / 100)) * 0.15 + 0.1;
+        ctx.fillStyle = '#FF0000';
+        ctx.globalAlpha = flashAlpha;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Draw 3-layer parallax starfield
+    assets.starLayers.forEach((layer, layerIndex) => {
+        layer.stars.forEach(star => {
+            ctx.beginPath();
+            ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 255, ${star.alpha})`;
+            ctx.fill();
+
+            // Move stars down for parallax effect
+            star.y += layer.speed;
+            if (star.y > canvas.height) {
+                star.y = 0;
+                star.x = Math.random() * canvas.width;
+            }
+        });
+    });
+}
+
+function drawPlayer() {
+    // Draw custom spaceship
+    ctx.fillStyle = '#00BFFF'; // Cyan/blue color
+
+    // Main ship body (triangle shape using rectangles)
+    ctx.fillRect(player.x + player.width/2 - 4, player.y, 8, 15); // Nose
+    ctx.fillRect(player.x + player.width/2 - 8, player.y + 15, 16, 10); // Mid section
+    ctx.fillRect(player.x + player.width/2 - 12, player.y + 25, 24, 15); // Wide base
+
+    // Cockpit
+    ctx.fillStyle = '#FFFF00'; // Yellow
+    ctx.fillRect(player.x + player.width/2 - 3, player.y + 18, 6, 6);
+
+    // Wings
+    ctx.fillStyle = '#4169E1'; // Royal blue
+    ctx.fillRect(player.x, player.y + 30, 12, 10); // Left wing
+    ctx.fillRect(player.x + player.width - 12, player.y + 30, 12, 10); // Right wing
+
+    // Engine glow
+    ctx.fillStyle = '#FF4500'; // Orange-red
+    ctx.fillRect(player.x + 8, player.y + player.height - 3, 10, 3); // Left engine
+    ctx.fillRect(player.x + player.width - 18, player.y + player.height - 3, 10, 3); // Right engine
+}
+
+function drawEnemies() {
+    enemies.forEach(enemy => {
+        const height = intensitySpikeActive ? 40 : enemy.height;
+
+        // Draw custom space invader enemy
+        let color = intensitySpikeActive ? '#FF0000' : '#00FF00';
+
+        // Sentinel enemies have metallic dark armor
+        if (enemy.type === 'sentinel' && !intensitySpikeActive) {
+            color = '#3C3C3C'; // Dark metallic gray
+        }
+
+        ctx.fillStyle = color;
+
+        // Body
+        ctx.fillRect(enemy.x + 8, enemy.y, enemy.width - 16, height - 8);
+
+        // Head/top part
+        ctx.fillRect(enemy.x + 4, enemy.y + 6, enemy.width - 8, 10);
+
+        // Eyes
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(enemy.x + 12, enemy.y + 8, 6, 6);
+        ctx.fillRect(enemy.x + enemy.width - 18, enemy.y + 8, 6, 6);
+
+        // Legs/tentacles
+        ctx.fillStyle = color;
+        ctx.fillRect(enemy.x + 4, enemy.y + height - 8, 6, 8);
+        ctx.fillRect(enemy.x + enemy.width - 10, enemy.y + height - 8, 6, 8);
+
+        // Middle leg
+        ctx.fillRect(enemy.x + enemy.width/2 - 3, enemy.y + height - 6, 6, 6);
+
+        // Antennae (only for intense mode)
+        if (intensitySpikeActive) {
+            ctx.fillRect(enemy.x + 8, enemy.y - 4, 3, 4);
+            ctx.fillRect(enemy.x + enemy.width - 11, enemy.y - 4, 3, 4);
+        }
+
+        // Sentinel core - flashing power source
+        if (enemy.type === 'sentinel' && !intensitySpikeActive) {
+            const coreFlash = Math.sin(Date.now() / 150) > 0;
+            ctx.fillStyle = coreFlash ? '#FF0000' : '#FFAA00'; // Red/Orange pulse
+            const coreSize = 6;
+            ctx.fillRect(
+                enemy.x + enemy.width / 2 - coreSize / 2,
+                enemy.y + height / 2 - coreSize / 2,
+                coreSize,
+                coreSize
+            );
+        }
+
+        // Draw enhanced shield overlay for sentinels
+        if (enemy.type === 'sentinel' && enemy.shieldHits > 0) {
+            // Shield color based on integrity
+            let shieldColor, shieldBorder, shieldAlpha;
+            if (enemy.shieldHits >= 2) {
+                shieldColor = 'rgba(0, 191, 255, 0.3)'; // Cyan - strong
+                shieldBorder = '#00BFFF';
+                shieldAlpha = 0.3;
+            } else {
+                // Critical - 1 hit left
+                shieldColor = 'rgba(255, 165, 0, 0.4)'; // Orange - critical
+                shieldBorder = '#FFA500';
+                shieldAlpha = 0.4;
+            }
+
+            // Shield fill
+            ctx.fillStyle = shieldColor;
+            ctx.fillRect(enemy.x, enemy.y, enemy.width, height);
+
+            // Shield quadrant corners for energy barrier effect
+            const cornerSize = 8;
+            ctx.strokeStyle = shieldBorder;
+            ctx.lineWidth = 3;
+
+            // Top-left corner
+            ctx.beginPath();
+            ctx.moveTo(enemy.x, enemy.y + cornerSize);
+            ctx.lineTo(enemy.x, enemy.y);
+            ctx.lineTo(enemy.x + cornerSize, enemy.y);
+            ctx.stroke();
+
+            // Top-right corner
+            ctx.beginPath();
+            ctx.moveTo(enemy.x + enemy.width - cornerSize, enemy.y);
+            ctx.lineTo(enemy.x + enemy.width, enemy.y);
+            ctx.lineTo(enemy.x + enemy.width, enemy.y + cornerSize);
+            ctx.stroke();
+
+            // Bottom-left corner
+            ctx.beginPath();
+            ctx.moveTo(enemy.x, enemy.y + height - cornerSize);
+            ctx.lineTo(enemy.x, enemy.y + height);
+            ctx.lineTo(enemy.x + cornerSize, enemy.y + height);
+            ctx.stroke();
+
+            // Bottom-right corner
+            ctx.beginPath();
+            ctx.moveTo(enemy.x + enemy.width - cornerSize, enemy.y + height);
+            ctx.lineTo(enemy.x + enemy.width, enemy.y + height);
+            ctx.lineTo(enemy.x + enemy.width, enemy.y + height - cornerSize);
+            ctx.stroke();
+
+            // Shield flash when critical (1 hit left)
+            if (enemy.shieldHits === 1) {
+                const flash = Math.sin(Date.now() / 80) > 0;
+                if (flash) {
+                    ctx.strokeStyle = '#FFFF00'; // Yellow flash
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(enemy.x, enemy.y, enemy.width, height);
+                }
+            }
+
+            // Shield hit count - larger and more prominent
+            const countColor = enemy.shieldHits === 1 ? '#FF0000' : '#FFFFFF';
+            ctx.fillStyle = countColor;
+            ctx.font = 'bold 16px "Courier New"';
+            ctx.textAlign = 'center';
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 3;
+            ctx.strokeText(enemy.shieldHits, enemy.x + enemy.width / 2, enemy.y + height / 2 + 5);
+            ctx.fillText(enemy.shieldHits, enemy.x + enemy.width / 2, enemy.y + height / 2 + 5);
+        }
+    });
+}
+
+function drawBullets() {
+    ctx.fillStyle = '#FFFF00';
+    bullets.forEach(bullet => {
+        ctx.beginPath();
+        ctx.arc(bullet.x, bullet.y, BULLET_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+    });
+}
+
+function drawEnemyBullets() {
+    ctx.fillStyle = '#FF66B2';
+    enemyBullets.forEach(bullet => {
+        ctx.beginPath();
+        ctx.arc(bullet.x, bullet.y, ENEMY_BULLET_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+    });
+}
+
+function drawPowerups() {
+    powerups.forEach(powerup => {
+        if (powerup.type === 'lives') {
+            // Draw health powerup (red cross/plus)
+            ctx.fillStyle = '#FF0066';
+            // Vertical bar
+            ctx.fillRect(powerup.x + POWERUP_SIZE/2 - 3, powerup.y + 2, 6, POWERUP_SIZE - 4);
+            // Horizontal bar
+            ctx.fillRect(powerup.x + 2, powerup.y + POWERUP_SIZE/2 - 3, POWERUP_SIZE - 4, 6);
+
+            // White border
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(powerup.x, powerup.y, POWERUP_SIZE, POWERUP_SIZE);
+        } else if (powerup.type === 'shield') {
+            // Draw shield powerup (cyan battery)
+            ctx.fillStyle = '#00FFFF'; // Cyan color
+            ctx.fillRect(powerup.x + 2, powerup.y + 4, POWERUP_SIZE - 4, POWERUP_SIZE - 8);
+
+            // Battery terminal
+            ctx.fillRect(powerup.x + 6, powerup.y + 2, POWERUP_SIZE - 12, 2);
+
+            // Energy bars inside
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(powerup.x + 5, powerup.y + 7, POWERUP_SIZE - 10, 2);
+            ctx.fillRect(powerup.x + 5, powerup.y + 11, POWERUP_SIZE - 10, 2);
+            ctx.fillRect(powerup.x + 5, powerup.y + 15, POWERUP_SIZE - 10, 2);
+
+            // Border
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(powerup.x, powerup.y, POWERUP_SIZE, POWERUP_SIZE);
+        } else if (powerup.type === 'ammo') {
+            // Draw ammo powerup (yellow bullet/magazine)
+            ctx.fillStyle = '#FFFF00'; // Yellow color
+            // Magazine body
+            ctx.fillRect(powerup.x + 4, powerup.y + 6, POWERUP_SIZE - 8, POWERUP_SIZE - 10);
+
+            // Bullets sticking out
+            ctx.fillStyle = '#FFA500'; // Orange bullet tips
+            ctx.fillRect(powerup.x + 6, powerup.y + 3, 3, 4);
+            ctx.fillRect(powerup.x + 11, powerup.y + 3, 3, 4);
+
+            // Border
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(powerup.x, powerup.y, POWERUP_SIZE, POWERUP_SIZE);
+        }
+    });
+}
+
+function drawGrenades() {
+    grenades.forEach(grenade => {
+        if (grenade.type === 'main') {
+            // Draw main grenade - larger dark projectile
+            ctx.fillStyle = '#808080'; // Gray
+            ctx.beginPath();
+            ctx.arc(grenade.x, grenade.y, GRENADE_RADIUS, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Add detail - center core
+            ctx.fillStyle = '#FF4500'; // Orange-red core
+            ctx.beginPath();
+            ctx.arc(grenade.x, grenade.y, GRENADE_RADIUS - 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Blinking indicator
+            if (Math.sin(Date.now() / 100) > 0) {
+                ctx.fillStyle = '#FFFF00';
+                ctx.beginPath();
+                ctx.arc(grenade.x, grenade.y, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        } else if (grenade.type === 'fragment') {
+            // Draw fragment - small bright projectile
+            ctx.fillStyle = '#FF6600'; // Bright orange
+            ctx.beginPath();
+            ctx.arc(grenade.x, grenade.y, 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Glow effect
+            ctx.fillStyle = 'rgba(255, 102, 0, 0.3)';
+            ctx.beginPath();
+            ctx.arc(grenade.x, grenade.y, 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    });
+}
+
+function drawHealthBar() {
+    const heartSize = 20;
+    const heartSpacing = 25;
+    const startX = canvas.width - 10 - (player.lives * heartSpacing);
+    const startY = 10;
+
+    for (let i = 0; i < player.lives; i++) {
+        const x = startX + (i * heartSpacing);
+
+        // Draw heart shape using rectangles (pixelated style)
+        ctx.fillStyle = '#FF0066';
+
+        // Top two bumps
+        ctx.fillRect(x, startY + 5, 7, 7);
+        ctx.fillRect(x + 10, startY + 5, 7, 7);
+
+        // Middle section
+        ctx.fillRect(x, startY + 10, 17, 7);
+
+        // Bottom point
+        ctx.fillRect(x + 3, startY + 15, 11, 3);
+        ctx.fillRect(x + 5, startY + 18, 7, 3);
+        ctx.fillRect(x + 7, startY + 21, 3, 2);
+    }
+
+    // Label
+    ctx.fillStyle = 'white';
+    ctx.font = '14px "Courier New"';
+    ctx.textAlign = "right";
+    ctx.fillText('HULL', canvas.width - 10, startY + 40);
+}
+
+function drawShieldBar() {
+    const barWidth = 150;
+    const barHeight = 20;
+    const startX = 10;
+    const startY = 10;
+
+    // Level 1: Shield system inactive
+    if (currentLevel === 1) {
+        // Background
+        ctx.fillStyle = '#333333';
+        ctx.fillRect(startX, startY, barWidth, barHeight);
+
+        // Border
+        ctx.strokeStyle = '#666666';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(startX, startY, barWidth, barHeight);
+
+        // Label
+        ctx.fillStyle = '#666666';
+        ctx.font = '12px "Courier New"';
+        ctx.textAlign = "center";
+        ctx.fillText('SHIELD: OFFLINE', startX + barWidth / 2, startY + 14);
+        return;
+    }
+
+    // Level 2+: Normal shield display
+    // Background
+    ctx.fillStyle = '#333333';
+    ctx.fillRect(startX, startY, barWidth, barHeight);
+
+    // Shield fill
+    const shieldPercent = player.shield / player.maxShield;
+    let shieldColor = '#00FFFF'; // Cyan
+    if (shieldPercent < 0.3) shieldColor = '#FF0000'; // Red
+    else if (shieldPercent < 0.6) shieldColor = '#FFA500'; // Orange
+
+    ctx.fillStyle = shieldColor;
+    ctx.fillRect(startX, startY, barWidth * shieldPercent, barHeight);
+
+    // Border
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(startX, startY, barWidth, barHeight);
+
+    // Label
+    ctx.fillStyle = 'white';
+    ctx.font = '12px "Courier New"';
+    ctx.textAlign = "center";
+    ctx.fillText(`SHIELD: ${Math.floor(player.shield)}/${player.maxShield}`, startX + barWidth / 2, startY + 14);
+}
+
+function drawHeatBar() {
+    const barWidth = 150;
+    const barHeight = 20;
+    const startX = 10;
+    const startY = 40;
+
+    // Background
+    ctx.fillStyle = '#333333';
+    ctx.fillRect(startX, startY, barWidth, barHeight);
+
+    // Heat fill
+    const heatPercent = player.heat / player.maxHeat;
+    let heatColor = '#FFFF00'; // Yellow
+    if (heatPercent > 0.7) heatColor = '#FF0000'; // Red
+    else if (heatPercent > 0.5) heatColor = '#FFA500'; // Orange
+
+    ctx.fillStyle = heatColor;
+    ctx.fillRect(startX, startY, barWidth * heatPercent, barHeight);
+
+    // Lockout overlay - show countdown progress
+    if (player.weaponLockoutActive) {
+        const now = Date.now();
+        const lockoutRemaining = player.weaponLockoutEndTime - now;
+        const lockoutPercent = lockoutRemaining / player.lockoutDuration;
+
+        // Red flashing overlay during lockout
+        const flashIntensity = Math.abs(Math.sin(now / 150)) * 0.5 + 0.3;
+        ctx.fillStyle = `rgba(255, 0, 0, ${flashIntensity})`;
+        ctx.fillRect(startX, startY, barWidth, barHeight);
+
+        // Lockout countdown bar (red, decreasing)
+        ctx.fillStyle = 'rgba(200, 0, 0, 0.8)';
+        ctx.fillRect(startX, startY, barWidth * lockoutPercent, barHeight);
+    } else if (heatPercent > 0.7 && !player.weaponJammed) {
+        // Warning flash at high heat (70%+)
+        const flash = Math.sin(Date.now() / 100) > 0;
+        if (flash) {
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+            ctx.fillRect(startX, startY, barWidth, barHeight);
+        }
+    }
+
+    // Border (thick red during lockout)
+    ctx.strokeStyle = player.weaponLockoutActive ? '#FF0000' : '#FFFFFF';
+    ctx.lineWidth = player.weaponLockoutActive ? 4 : 2;
+    ctx.strokeRect(startX, startY, barWidth, barHeight);
+
+    // Label
+    ctx.fillStyle = 'white';
+    ctx.font = '12px "Courier New"';
+    ctx.textAlign = "center";
+
+    if (player.weaponLockoutActive) {
+        const now = Date.now();
+        const lockoutRemaining = Math.ceil((player.weaponLockoutEndTime - now) / 1000);
+        ctx.fillStyle = '#FF0000';
+        ctx.fillText(`🔒 LOCKOUT: ${lockoutRemaining}s 🔒`, startX + barWidth / 2, startY + 14);
+    } else if (player.weaponJammed) {
+        ctx.fillStyle = '#FF0000';
+        ctx.fillText('WEAPON JAMMED!', startX + barWidth / 2, startY + 14);
+    } else if (player.ammoBoostActive) {
+        ctx.fillStyle = '#FFFF00';
+        ctx.fillText(`⚡ BOOST: ${player.ammoBoostShots} shots ⚡`, startX + barWidth / 2, startY + 14);
+    } else if (heatPercent > 0.7) {
+        ctx.fillStyle = '#FFFF00';
+        ctx.fillText('⚠ DANGER ZONE ⚠', startX + barWidth / 2, startY + 14);
+    } else {
+        ctx.fillText(`HEAT: ${Math.floor(player.heat)}/${player.maxHeat}`, startX + barWidth / 2, startY + 14);
+    }
+}
+
+function drawGrenadeCount() {
+    const startX = 10;
+    const startY = 70; // Below heat bar
+    const grenadeSize = 12;
+    const grenadeSpacing = 18;
+
+    // Label
+    ctx.fillStyle = 'white';
+    ctx.font = '12px "Courier New"';
+    ctx.textAlign = "left";
+    ctx.fillText('GRENADES (G):', startX, startY);
+
+    // Draw grenade icons
+    for (let i = 0; i < player.maxGrenades; i++) {
+        const x = startX + (i * grenadeSpacing);
+        const y = startY + 10;
+        const isFilled = i < player.grenades;
+
+        // Grenade icon
+        ctx.fillStyle = isFilled ? '#FF6600' : '#333333'; // Orange if available, dark if empty
+        ctx.beginPath();
+        ctx.arc(x + grenadeSize/2, y + grenadeSize/2, grenadeSize/2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Border
+        ctx.strokeStyle = isFilled ? '#FFAA00' : '#666666';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x + grenadeSize/2, y + grenadeSize/2, grenadeSize/2, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Core indicator
+        if (isFilled) {
+            ctx.fillStyle = '#FFFF00';
+            ctx.beginPath();
+            ctx.arc(x + grenadeSize/2, y + grenadeSize/2, 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+}
+
+function drawLevelDisplay() {
+    const level = LEVELS[currentLevel];
+    ctx.fillStyle = 'white';
+    ctx.font = '16px "Courier New"';
+    ctx.textAlign = "center";
+    ctx.fillText(`LEVEL ${currentLevel}: ${level.name}`, canvas.width / 2, 20);
+}
+
+function drawAudioToggle() {
+    const buttonX = canvas.width - 80;
+    const buttonY = canvas.height - 30;
+    const buttonWidth = 70;
+    const buttonHeight = 20;
+
+    // Button background
+    ctx.fillStyle = audioEnabled ? '#00FF00' : '#FF0000';
+    ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
+
+    // Button border
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(buttonX, buttonY, buttonWidth, buttonHeight);
+
+    // Button text
+    ctx.fillStyle = '#000000';
+    ctx.font = '12px "Courier New"';
+    ctx.textAlign = "center";
+    ctx.fillText(audioEnabled ? 'AUDIO ON' : 'AUDIO OFF', buttonX + buttonWidth / 2, buttonY + 14);
+
+    // Instructions
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '10px "Courier New"';
+    ctx.textAlign = "right";
+    ctx.fillText('Press M to toggle', canvas.width - 10, canvas.height - 10);
+}
+
+function drawUI() {
+    drawHealthBar();
+    drawShieldBar();
+    drawHeatBar();
+    drawGrenadeCount();
+    drawLevelDisplay();
+    drawAudioToggle();
+}
+
+
+// --- MOVE FUNCTIONS ---
+function movePlayer() {
+    player.x += player.dx;
+    if (player.x < 0) player.x = 0;
+    if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+}
+
+function moveBullets() {
+    for (let i = bullets.length - 1; i >= 0; i--) {
+        bullets[i].y -= BULLET_SPEED;
+        if (bullets[i].y < 0) {
+            bullets.splice(i, 1);
+        }
+    }
+}
+
+function moveEnemyBullets() {
+    for (let i = enemyBullets.length - 1; i >= 0; i--) {
+        enemyBullets[i].x += enemyBullets[i].dx;
+        enemyBullets[i].y += enemyBullets[i].dy;
+        if (enemyBullets[i].y > canvas.height || enemyBullets[i].x < 0 || enemyBullets[i].x > canvas.width) {
+            enemyBullets.splice(i, 1);
+        }
+    }
+}
+
+function moveEnemies() {
+    const speedMultiplier = 1 + (ENEMY_ROWS * ENEMY_COLS - enemies.length) * 0.05;
+    let hitEdge = false;
+    enemies.forEach(enemy => {
+        enemy.x += enemySpeedDirection * speedMultiplier;
+        enemy.y += 0.05;
+        if (enemy.x + enemy.width > canvas.width || enemy.x < 0) hitEdge = true;
+    });
+
+    if (hitEdge) {
+        enemySpeedDirection *= -1;
+        enemies.forEach(enemy => enemy.y += ENEMY_HEIGHT / 4);
+    }
+}
+
+function movePowerups() {
+    for (let i = powerups.length - 1; i >= 0; i--) {
+        powerups[i].y += POWERUP_FALL_SPEED;
+        // Remove if off screen
+        if (powerups[i].y > canvas.height) {
+            powerups.splice(i, 1);
+        }
+    }
+}
+
+
+// --- CORE LOGIC ---
+function detectCollisions() {
+    // Iterate backwards to avoid splice issues
+    for (let bulletIndex = bullets.length - 1; bulletIndex >= 0; bulletIndex--) {
+        const bullet = bullets[bulletIndex];
+        for (let enemyIndex = enemies.length - 1; enemyIndex >= 0; enemyIndex--) {
+            const enemy = enemies[enemyIndex];
+            const height = intensitySpikeActive ? 40 : enemy.height;
+
+            if (bullet.x > enemy.x && bullet.x < enemy.x + enemy.width &&
+                bullet.y > enemy.y && bullet.y < enemy.y + height) {
+                bullets.splice(bulletIndex, 1);
+
+                // Handle sentinel shields
+                if (enemy.type === 'sentinel' && enemy.shieldHits > 0) {
+                    enemy.shieldHits--;
+                    playSound('enemyHit');
+                    if (enemy.shieldHits === 0) {
+                        // Shield destroyed, next hit will kill
+                    }
+                } else {
+                    // Enemy destroyed
+                    playSound('enemyDestroy');
+
+                    // Spawn powerup chance when enemy dies (level-balanced)
+                    const balance = LEVEL_BALANCE[currentLevel];
+                    if (Math.random() < balance.dropChance) {
+                        // Determine powerup type based on level weights
+                        const rand = Math.random();
+                        let powerupType;
+                        if (rand < balance.livesDropWeight) {
+                            powerupType = 'lives';
+                        } else if (rand < balance.livesDropWeight + balance.shieldDropWeight) {
+                            powerupType = 'shield';
+                        } else {
+                            powerupType = 'ammo';
+                        }
+                        powerups.push({
+                            x: enemy.x + enemy.width / 2 - POWERUP_SIZE / 2,
+                            y: enemy.y,
+                            type: powerupType
+                        });
+                    }
+
+                    enemies.splice(enemyIndex, 1);
+                }
+                break; // Bullet hit something, move to next bullet
+            }
+        }
+    }
+
+    // Grenade collisions (iterate backwards)
+    for (let grenadeIndex = grenades.length - 1; grenadeIndex >= 0; grenadeIndex--) {
+        const grenade = grenades[grenadeIndex];
+
+        if (grenade.type === 'main') {
+            // Main grenade hits enemy and explodes
+            for (let enemyIndex = enemies.length - 1; enemyIndex >= 0; enemyIndex--) {
+                const enemy = enemies[enemyIndex];
+                const height = intensitySpikeActive ? 40 : enemy.height;
+
+                if (grenade.x > enemy.x && grenade.x < enemy.x + enemy.width &&
+                    grenade.y > enemy.y && grenade.y < enemy.y + height) {
+                    // Explode grenade on impact
+                    explodeGrenade(grenade, grenadeIndex);
+                    break; // Move to next grenade
+                }
+            }
+        } else if (grenade.type === 'fragment') {
+            // Fragment hits and damages enemy
+            for (let enemyIndex = enemies.length - 1; enemyIndex >= 0; enemyIndex--) {
+                const enemy = enemies[enemyIndex];
+                const height = intensitySpikeActive ? 40 : enemy.height;
+
+                if (grenade.x > enemy.x && grenade.x < enemy.x + enemy.width &&
+                    grenade.y > enemy.y && grenade.y < enemy.y + height) {
+                    grenades.splice(grenadeIndex, 1);
+
+                    // Handle sentinel shields
+                    if (enemy.type === 'sentinel' && enemy.shieldHits > 0) {
+                        enemy.shieldHits--;
+                        playSound('enemyHit');
+                    } else {
+                        // Enemy destroyed
+                        playSound('enemyDestroy');
+
+                        // Spawn powerup chance when enemy dies
+                        const balance = LEVEL_BALANCE[currentLevel];
+                        if (Math.random() < balance.dropChance) {
+                            const rand = Math.random();
+                            let powerupType;
+                            if (rand < balance.livesDropWeight) {
+                                powerupType = 'lives';
+                            } else if (rand < balance.livesDropWeight + balance.shieldDropWeight) {
+                                powerupType = 'shield';
+                            } else {
+                                powerupType = 'ammo';
+                            }
+                            powerups.push({
+                                x: enemy.x + enemy.width / 2 - POWERUP_SIZE / 2,
+                                y: enemy.y,
+                                type: powerupType
+                            });
+                        }
+
+                        enemies.splice(enemyIndex, 1);
+                    }
+                    break; // Fragment hit something, move to next fragment
+                }
+            }
+        }
+    }
+
+    // Check player collision with enemies
+    enemies.forEach(enemy => {
+        const height = intensitySpikeActive ? 40 : enemy.height;
+        if (player.x < enemy.x + enemy.width && player.x + player.width > enemy.x &&
+            player.y < enemy.y + height && player.y + player.height > enemy.y) {
+            player.lives = 0; // Instant game over
+        }
+    });
+
+    // Enemy bullets hitting player (iterate backwards)
+    for (let i = enemyBullets.length - 1; i >= 0; i--) {
+        const bullet = enemyBullets[i];
+        if (bullet.x > player.x && bullet.x < player.x + player.width &&
+            bullet.y > player.y && bullet.y < player.y + player.height) {
+
+            enemyBullets.splice(i, 1);
+
+            // Level 1 (Training): Direct hull damage (1 hit = 1 life)
+            if (currentLevel === 1) {
+                player.lives--;
+                playSound('hullHit');
+                console.log('Training Level - Direct hull hit! Lives now:', player.lives); // Debug
+                player.x = canvas.width / 2 - PLAYER_WIDTH / 2;
+            } else {
+                // Level 2+: Damage shield first, then hull
+                if (player.shield > 0) {
+                    player.shield = Math.max(0, player.shield - ENEMY_BULLET_DAMAGE);
+                    playSound('shieldHit');
+                    console.log('Shield hit! Shield now:', player.shield); // Debug
+                } else {
+                    player.lives--;
+                    playSound('hullHit');
+                    console.log('Hull hit! Lives now:', player.lives); // Debug
+                    player.x = canvas.width / 2 - PLAYER_WIDTH / 2;
+                }
+            }
+        }
+    }
+
+    // Powerup collection (iterate backwards)
+    for (let i = powerups.length - 1; i >= 0; i--) {
+        const powerup = powerups[i];
+        if (player.x < powerup.x + POWERUP_SIZE &&
+            player.x + player.width > powerup.x &&
+            player.y < powerup.y + POWERUP_SIZE &&
+            player.y + player.height > powerup.y) {
+
+            if (powerup.type === 'lives') {
+                if (player.lives < player.maxLives) {
+                    player.lives++;
+                    playSound('powerup');
+                }
+            } else if (powerup.type === 'shield') {
+                player.shield = Math.min(player.shield + 50, player.maxShield);
+                playSound('powerup');
+            } else if (powerup.type === 'ammo') {
+                player.ammoBoostActive = true;
+                player.ammoBoostShots = 100;
+                playSound('powerup');
+            }
+
+            powerups.splice(i, 1);
+        }
+    }
+}
+
+function enemyShoot() {
+    // Apply level-specific shooting intensity
+    const balance = LEVEL_BALANCE[currentLevel];
+    const levelAdjustedChance = ENEMY_SHOOT_CHANCE * strikeVolumeMultiplier * balance.shootingIntensity;
+
+    if (Math.random() < levelAdjustedChance && enemies.length > 0) {
+        const frontlineEnemies = {};
+        enemies.forEach(enemy => {
+            if (!frontlineEnemies[enemy.x] || enemy.y > frontlineEnemies[enemy.x].y) {
+                frontlineEnemies[enemy.x] = enemy;
+            }
+        });
+
+        const shooters = Object.values(frontlineEnemies);
+        if (shooters.length > 0) {
+            const shooter = shooters[Math.floor(Math.random() * shooters.length)];
+            const shooterHeight = intensitySpikeActive ? 40 : shooter.height;
+            const dx = (player.x + player.width / 2) - (shooter.x + shooter.width / 2);
+            const dy = player.y - (shooter.y + shooterHeight);
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            enemyBullets.push({ x: shooter.x + shooter.width / 2, y: shooter.y + shooterHeight, dx: (dx / dist) * ENEMY_BULLET_SPEED, dy: (dy / dist) * ENEMY_BULLET_SPEED });
+        }
+    }
+}
+
+function updateGameState(now) {
+    const elapsedTime = (now - gameStartTime) / 1000;
+
+    // Intensity spike system
+    if (intensitySpikeActive) {
+        if (now > intensitySpikeEndTime) {
+            intensitySpikeActive = false;
+            nextIntensitySpikeTime = now + 5000 + Math.random() * 5000;
+        }
+    } else if (now > nextIntensitySpikeTime) {
+        intensitySpikeActive = true;
+        intensitySpikeEndTime = now + 2000 + Math.random() * 3000;
+    }
+    strikeVolumeMultiplier = intensitySpikeActive ? 5 : 1 + (elapsedTime * 0.01);
+
+    // Check weapon lockout timer
+    if (player.weaponLockoutActive) {
+        if (now > player.weaponLockoutEndTime) {
+            // Lockout ended - weapon ready again
+            player.weaponLockoutActive = false;
+            player.weaponJammed = false;
+            player.heat = 0; // Reset heat completely
+            console.log('Weapon lockout ended - systems restored');
+        } else {
+            // During lockout: force heat to decrease rapidly
+            player.heat = Math.max(0, player.heat - 2.5); // Rapid cooldown during lockout
+        }
+    } else {
+        // Heat dissipation with DELAY - only cools if you stopped shooting
+        if (player.heat > 0) {
+            const timeSinceLastShot = now - player.lastShotTime;
+
+            // KEY CHANGE: Heat only dissipates after delay period
+            if (timeSinceLastShot > player.heatDissipationDelay) {
+                player.heat = Math.max(0, player.heat - player.heatDissipationRate);
+            }
+            // If shooting rapidly, heat DOES NOT DISSIPATE AT ALL!
+        }
+
+        // Check for overheat condition
+        if (player.heat >= player.maxHeat && !player.weaponJammed) {
+            // OVERHEAT! Trigger mandatory lockout
+            player.weaponJammed = true;
+            player.weaponLockoutActive = true;
+            player.weaponLockoutEndTime = now + player.lockoutDuration;
+            playSound('weaponJam');
+            console.log('OVERHEAT! Weapon locked for 5 seconds');
+        }
+    }
+
+    // Shield recharge (only Level 2+, and only if not firing rapidly and not locked out)
+    if (currentLevel > 1 && !player.weaponLockoutActive) {
+        const timeSinceLastShot = now - player.lastShotTime;
+        const canRecharge = timeSinceLastShot > (player.shootCooldown * 1.5) && player.heat < 40;
+
+        if (canRecharge && player.shield < player.maxShield) {
+            player.shield = Math.min(player.maxShield, player.shield + player.shieldRechargeRate);
+        }
+    }
+}
+
+
+// --- MAIN GAME LOOP ---
+let levelTransitioning = false;
+let gameOverSoundPlayed = false;
+let victorySoundPlayed = false;
+
+function update() {
+    const now = Date.now();
+
+    // Game Over check
+    if (player.lives <= 0) {
+        if (!gameOverSoundPlayed) {
+            playSound('gameOver');
+            gameOverSoundPlayed = true;
+        }
+        drawBackground();
+        ctx.fillStyle = 'red';
+        ctx.font = '50px "Courier New"';
+        ctx.textAlign = "center";
+        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2);
+        ctx.font = '20px "Courier New"';
+        ctx.fillText(`Final Level: ${currentLevel}`, canvas.width / 2, canvas.height / 2 + 40);
+        return;
+    }
+
+    // Level cleared check
+    if (enemies.length === 0 && !levelTransitioning) {
+        if (currentLevel < 3) {
+            // Next level
+            levelTransitioning = true;
+            playSound('levelComplete');
+            drawBackground();
+            ctx.fillStyle = '#00FF00';
+            ctx.font = '40px "Courier New"';
+            ctx.textAlign = "center";
+            ctx.fillText(`LEVEL ${currentLevel} CLEARED!`, canvas.width / 2, canvas.height / 2 - 20);
+            ctx.font = '20px "Courier New"';
+            ctx.fillText("Loading next level...", canvas.width / 2, canvas.height / 2 + 20);
+
+            // Progress to next level after delay
+            setTimeout(() => {
+                currentLevel++;
+                bullets = [];
+                enemyBullets = [];
+                powerups = [];
+
+                // Activate shields for Level 2+
+                if (currentLevel === 2) {
+                    player.shield = player.maxShield;
+                }
+
+                createEnemies();
+                gameStartTime = Date.now();
+                nextIntensitySpikeTime = gameStartTime + 5000 + Math.random() * 5000;
+                levelTransitioning = false;
+            }, 2000);
+
+            requestAnimationFrame(update); // Keep loop running during transition
+            return;
+        } else {
+            // Victory - all levels complete!
+            if (!victorySoundPlayed) {
+                playSound('victory');
+                victorySoundPlayed = true;
+            }
+            drawBackground();
+            ctx.fillStyle = '#FFD700';
+            ctx.font = '50px "Courier New"';
+            ctx.textAlign = "center";
+            ctx.fillText("VICTORY!", canvas.width / 2, canvas.height / 2);
+            ctx.font = '20px "Courier New"';
+            ctx.fillText("All levels completed!", canvas.width / 2, canvas.height / 2 + 40);
+            return;
+        }
+    }
+
+    // Don't update game during transition
+    if (levelTransitioning) {
+        drawBackground();
+        ctx.fillStyle = '#00FF00';
+        ctx.font = '40px "Courier New"';
+        ctx.textAlign = "center";
+        ctx.fillText(`LEVEL ${currentLevel} CLEARED!`, canvas.width / 2, canvas.height / 2 - 20);
+        ctx.font = '20px "Courier New"';
+        ctx.fillText("Loading next level...", canvas.width / 2, canvas.height / 2 + 20);
+        requestAnimationFrame(update);
+        return;
+    }
+
+    // Process input every frame for smooth controls
+    handleInput();
+
+    updateGameState(now);
+
+    drawBackground();
+    drawPlayer();
+    drawEnemies();
+    drawBullets();
+    drawEnemyBullets();
+    drawGrenades();
+    drawPowerups();
+    drawUI();
+
+    movePlayer();
+    moveBullets();
+    moveEnemyBullets();
+    moveGrenades();
+    moveEnemies();
+    movePowerups();
+    enemyShoot();
+    detectCollisions();
+
+    requestAnimationFrame(update);
+}
+
+
+// --- EVENT HANDLERS ---
+function keyDown(e) {
+    if (e.key === 'ArrowRight' || e.key === 'Right') {
+        keys.right = true;
+        e.preventDefault();
+    } else if (e.key === 'ArrowLeft' || e.key === 'Left') {
+        keys.left = true;
+        e.preventDefault();
+    } else if (e.key === ' ' || e.key === 'Spacebar') {
+        keys.space = true;
+        e.preventDefault();
+    } else if (e.key === 'g' || e.key === 'G') {
+        keys.grenade = true;
+        e.preventDefault();
+    } else if (e.key === 'm' || e.key === 'M') {
+        toggleAudio();
+        playSound('powerup'); // Test sound when toggling on
+    }
+}
+
+function keyUp(e) {
+    if (e.key === 'ArrowRight' || e.key === 'Right') {
+        keys.right = false;
+        e.preventDefault();
+    } else if (e.key === 'ArrowLeft' || e.key === 'Left') {
+        keys.left = false;
+        e.preventDefault();
+    } else if (e.key === ' ' || e.key === 'Spacebar') {
+        keys.space = false;
+        e.preventDefault();
+    } else if (e.key === 'g' || e.key === 'G') {
+        keys.grenade = false;
+        e.preventDefault();
+    }
+}
+
+// Process input every frame for smooth controls
+function handleInput() {
+    // Movement - process every frame
+    if (keys.right && !keys.left) {
+        player.dx = player.speed;
+    } else if (keys.left && !keys.right) {
+        player.dx = -player.speed;
+    } else {
+        player.dx = 0;
+    }
+
+    // Continuous shooting when space is held
+    if (keys.space) {
+        shoot();
+    }
+
+    // Grenade launch (one-time press, handled in keyDown)
+    if (keys.grenade) {
+        launchGrenade();
+        keys.grenade = false; // Prevent continuous launch
+    }
+}
+
+function shoot() {
+    const now = Date.now();
+
+    // ABSOLUTE LOCKOUT - Cannot shoot during weapon lockout
+    if (player.weaponLockoutActive) {
+        // Play error sound occasionally
+        if (Math.random() < 0.03) {
+            playSound('weaponJam');
+        }
+        return;
+    }
+
+    // Normal shooting
+    if (now - player.lastShotTime > player.shootCooldown && !player.weaponJammed) {
+        // Check if ammo boost is active
+        if (player.ammoBoostActive && player.ammoBoostShots > 0) {
+            player.heat = Math.min(player.maxHeat, player.heat + 1); // Only 1 heat per shot
+            player.ammoBoostShots--;
+            if (player.ammoBoostShots === 0) {
+                player.ammoBoostActive = false;
+            }
+        } else {
+            player.heat = Math.min(player.maxHeat, player.heat + player.heatPerShot);
+        }
+
+        player.lastShotTime = now;
+        bullets.push({ x: player.x + player.width / 2, y: player.y });
+        playSound('playerShoot');
+    }
+}
+
+function launchGrenade() {
+    // Check if player has grenades and is not locked out
+    if (player.grenades > 0 && !player.weaponLockoutActive) {
+        player.grenades--;
+        grenades.push({
+            x: player.x + player.width / 2,
+            y: player.y,
+            type: 'main',
+            hasExploded: false
+        });
+        playSound('grenadeLaunch');
+    }
+}
+
+function moveGrenades() {
+    for (let i = grenades.length - 1; i >= 0; i--) {
+        const grenade = grenades[i];
+
+        if (grenade.type === 'main') {
+            // Move main grenade upward
+            grenade.y -= GRENADE_SPEED;
+
+            // Check for explosion conditions
+            // 1. Reached top of screen
+            // 2. Reached explosion altitude (y < 100)
+            // 3. Hit an enemy (checked in collision detection)
+            if (grenade.y < 100 || grenade.y < 0) {
+                explodeGrenade(grenade, i);
+            }
+        } else if (grenade.type === 'fragment') {
+            // Move fragments in their trajectory
+            grenade.x += grenade.dx;
+            grenade.y += grenade.dy;
+
+            // Remove fragments that go off screen
+            if (grenade.x < 0 || grenade.x > canvas.width ||
+                grenade.y < 0 || grenade.y > canvas.height) {
+                grenades.splice(i, 1);
+            }
+        }
+    }
+}
+
+function explodeGrenade(grenade, grenadeIndex) {
+    if (grenade.hasExploded) return;
+
+    grenade.hasExploded = true;
+    playSound('grenadeExplode');
+
+    // Create fragments spreading outward
+    const fragmentAngles = [
+        -Math.PI / 4,     // Up-left
+        Math.PI / 4,      // Up-right
+        -3 * Math.PI / 4, // Down-left
+        3 * Math.PI / 4   // Down-right
+    ];
+
+    for (let i = 0; i < GRENADE_FRAGMENT_COUNT; i++) {
+        const angle = fragmentAngles[i];
+        grenades.push({
+            x: grenade.x,
+            y: grenade.y,
+            type: 'fragment',
+            dx: Math.cos(angle) * GRENADE_FRAGMENT_SPEED,
+            dy: Math.sin(angle) * GRENADE_FRAGMENT_SPEED
+        });
+    }
+
+    // Remove the main grenade
+    grenades.splice(grenadeIndex, 1);
+}
+
+
+// --- START GAME ---
+console.log('Game starting...');
+createEnemies();
+gameStartTime = Date.now();
+nextIntensitySpikeTime = gameStartTime + 5000 + Math.random() * 5000;
+console.log('Enemies created:', enemies.length);
+
+document.addEventListener('keydown', keyDown);
+document.addEventListener('keyup', keyUp);
+
+// Reset all keys when window loses focus (prevents stuck keys)
+window.addEventListener('blur', () => {
+    keys.left = false;
+    keys.right = false;
+    keys.space = false;
+    player.dx = 0;
+});
+
+// Start game loop
+update();
