@@ -5,10 +5,43 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Galactic Strategist</title>
     <link rel="stylesheet" href="style.css">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
-    <h1>Galactic Strategist</h1>
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div style="text-align: center; padding: 10px; background-color: rgba(0,0,0,0.8); border-bottom: 2px solid #00FFFF;">
+        <h1 style="margin: 5px 0; color: #00FFFF; font-size: 28px;">Galactic Strategist</h1>
+        <div style="margin: 5px 0;">
+            <a href="index.html" style="color: #00FFFF; text-decoration: none; margin: 0 15px; padding: 5px 15px; border: 1px solid #00FFFF;">🎮 PLAY</a>
+            <a href="leaderboard.html" style="color: #00FFFF; text-decoration: none; margin: 0 15px; padding: 5px 15px; border: 1px solid #00FFFF;">📊 LEADERBOARD</a>
+        </div>
+    </div>
+    <canvas id="gameCanvas" width="800" height="700"></canvas>
+    
+    <!-- Authentication and Configuration -->
+    <script src="whitelist.js"></script>
+    <script src="auth.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="scores.js"></script>
+    
+    <!-- Game Script -->
     <script src="game.js"></script>
+    
+    <!-- Auth Check -->
+    <script>
+        // Check authentication on page load
+        const currentUser = getCurrentUser();
+        if (!currentUser) {
+            // Not logged in, redirect to login
+            window.location.href = 'login.html';
+        } else {
+            // Initialize Firebase
+            initFirestore();
+            
+            // Make user info available to game
+            window.currentUser = currentUser;
+        }
+    </script>
 </body>
 </html>

@@ -472,6 +472,7 @@ const keys = {
     space: false,
     grenade: false
 };
+let showHelp = false; // Toggle help panel
 let strikeVolumeMultiplier = 1;
 let intensitySpikeActive = false;
 let nextIntensitySpikeTime = 0;
@@ -531,6 +532,10 @@ function createEnemies() {
         default:
             createWallFormation(level);
     }
+    
+    // Set initial enemy count after enemies are created
+    initialEnemyCount = enemies.length;
+    console.log(`Level ${currentLevel}: Created ${initialEnemyCount} enemies`);
 }
 
 // Level 1: The Wall - Dense 5x10 rectangle
@@ -1348,26 +1353,39 @@ function drawTimeCounter() {
 
 function calculateLevelScore(timeSeconds, ammoUsed, enemiesKilled, totalEnemies) {
     // Score formula: Rewards actual gameplay
-    // Base score requires minimum gameplay (at least 1 enemy killed or 30 seconds)
-    if (enemiesKilled === 0 && timeSeconds < 30) {
-        return 0; // No score for instant deaths or very short games
+    // Ensure we have valid inputs
+    const validTime = Math.max(0, timeSeconds || 0);
+    const validAmmo = Math.max(0, ammoUsed || 0);
+    const validKills = Math.max(0, enemiesKilled || 0);
+    const validTotalEnemies = Math.max(1, totalEnemies || 50);
+    
+    // No score for instant deaths (< 3 seconds with no kills and no ammo)
+    if (validKills === 0 && validTime < 3 && validAmmo === 0) {
+        return 0;
     }
     
-    // Base points for survival (more time = better, but with diminishing returns)
-    const survivalScore = Math.min(5000, timeSeconds * 50); // Max 5000 for 100+ seconds
+    // Base points for survival (more time = better)
+    const survivalScore = validTime * 30; // 30 points per second
     
-    // Points for enemies killed (most important)
-    const killRatio = enemiesKilled / Math.max(1, totalEnemies); // 0 to 1
-    const killScore = killRatio * 10000; // Up to 10000 for all enemies killed
+    // Points for enemies killed (most important - up to 8000 points)
+    const killRatio = Math.min(1, validKills / validTotalEnemies); // 0 to 1
+    const killScore = killRatio * 8000; // Up to 8000 for all enemies killed
     
-    // Efficiency bonus: more kills per ammo = better
-    const killsPerAmmo = enemiesKilled / Math.max(1, ammoUsed);
-    const efficiencyScore = Math.min(5000, killsPerAmmo * 200); // Bonus for efficiency
+    // Efficiency bonus: more kills per ammo = better (but only if they actually killed enemies)
+    let efficiencyScore = 0;
+    if (validKills > 0 && validAmmo > 0) {
+        const killsPerAmmo = validKills / validAmmo;
+        efficiencyScore = Math.min(2000, killsPerAmmo * 100); // Bonus for efficiency, max 2000
+    } else if (validKills > 0 && validAmmo === 0) {
+        // Bonus for killing enemies without using ammo (grenades, etc.)
+        efficiencyScore = 1000;
+    }
     
-    // Penalty for very short games (must survive at least 15 seconds to get good score)
-    const timePenalty = timeSeconds < 15 ? (15 - timeSeconds) * 200 : 0;
+    // Small bonus for longer games (encourages survival)
+    const timeBonus = validTime > 60 ? 500 : 0;
     
-    const finalScore = survivalScore + killScore + efficiencyScore - timePenalty;
+    // Calculate final score
+    const finalScore = survivalScore + killScore + efficiencyScore + timeBonus;
     
     return Math.max(0, Math.floor(finalScore));
 }
@@ -1421,6 +1439,157 @@ function drawAudioToggle() {
     ctx.fillText('Press M to toggle', canvas.width - 10, canvas.height - 10);
 }
 
+function drawHelpButton() {
+    const buttonX = canvas.width - 160;
+    const buttonY = canvas.height - 30;
+    const buttonWidth = 60;
+    const buttonHeight = 20;
+
+    // Button background
+    ctx.fillStyle = showHelp ? '#00FFFF' : '#444444';
+    ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
+
+    // Button border
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(buttonX, buttonY, buttonWidth, buttonHeight);
+
+    // Button text
+    ctx.fillStyle = showHelp ? '#000000' : '#FFFFFF';
+    ctx.font = '12px "Courier New"';
+    ctx.textAlign = "center";
+    ctx.fillText(showHelp ? 'HELP ON' : 'HELP', buttonX + buttonWidth / 2, buttonY + 14);
+
+    // Instructions
+    if (!showHelp) {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = '10px "Courier New"';
+        ctx.textAlign = "left";
+        ctx.fillText('Press H for help', buttonX, canvas.height - 10);
+    }
+}
+
+function drawHelpPanel() {
+    if (!showHelp) return;
+    
+    const panelWidth = 280;
+    const panelX = canvas.width - panelWidth - 10;
+    const panelY = UI_HEIGHT + 10;
+    const panelHeight = canvas.height - UI_HEIGHT - 20;
+    
+    // Semi-transparent background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
+    
+    // Border
+    ctx.strokeStyle = '#00FFFF';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(panelX, panelY, panelWidth, panelHeight);
+    
+    // Title
+    ctx.fillStyle = '#00FFFF';
+    ctx.font = 'bold 16px "Courier New"';
+    ctx.textAlign = "center";
+    ctx.fillText('HELP - UI GUIDE', panelX + panelWidth / 2, panelY + 25);
+    
+    // Help content
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '12px "Courier New"';
+    ctx.textAlign = "left";
+    
+    let yPos = panelY + 50;
+    const lineHeight = 22;
+    const labelWidth = 120;
+    
+    // Helper function to draw a help item
+    function drawHelpItem(label, description, icon = '') {
+        ctx.fillStyle = '#FFFF00';
+        ctx.font = 'bold 12px "Courier New"';
+        ctx.fillText(icon + label + ':', panelX + 10, yPos);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = '11px "Courier New"';
+        const words = description.split(' ');
+        let line = '';
+        let currentY = yPos + 15;
+        
+        for (let word of words) {
+            const testLine = line + word + ' ';
+            const metrics = ctx.measureText(testLine);
+            if (metrics.width > panelWidth - 30 && line !== '') {
+                ctx.fillText(line, panelX + 15, currentY);
+                line = word + ' ';
+                currentY += 14;
+            } else {
+                line = testLine;
+            }
+        }
+        if (line !== '') {
+            ctx.fillText(line, panelX + 15, currentY);
+        }
+        
+        yPos = currentY + 10;
+    }
+    
+    // Health/Lives
+    ctx.fillStyle = '#FF0066';
+    ctx.fillRect(panelX + 10, yPos - 18, 15, 15);
+    drawHelpItem('HULL (Lives)', 'Your health. Each heart = 1 life. Lost when hit without shield.', '❤');
+    
+    // Shield
+    drawHelpItem('SHIELD', 'Protection bar (Level 2+). Absorbs damage before hull. Recharges slowly. OFFLINE in Level 1.', '🛡');
+    
+    // Heat
+    drawHelpItem('HEAT', 'Weapon temperature. Too high = weapon lockout. Yellow=OK, Orange=Warning, Red=Danger!', '🌡');
+    
+    // Grenades
+    ctx.fillStyle = '#FF6600';
+    ctx.beginPath();
+    ctx.arc(panelX + 10, yPos - 12, 6, 0, Math.PI * 2);
+    ctx.fill();
+    drawHelpItem('GRENADES', 'Explosive weapons. Press G to throw. Replenished by powerups.', '💣');
+    
+    // Ammo/Heat relationship
+    yPos += 5;
+    drawHelpItem('AMMO/HEAT', 'Firing increases heat. Wait for cooldown or face lockout!', '⚡');
+    
+    // Powerups
+    yPos += 5;
+    drawHelpItem('POWERUPS', 'Pick up: ❤=Life, 🛡=Shield, ⚡=Ammo, 💣=Grenade', '✨');
+    
+    // Score
+    yPos += 5;
+    drawHelpItem('SCORE', 'Based on time survived, enemies killed, and ammo efficiency. Higher is better!', '⭐');
+    
+    // Time
+    yPos += 5;
+    drawHelpItem('TIME', 'Survival time. Longer = more score points.', '⏱');
+    
+    // Controls
+    yPos += 15;
+    ctx.fillStyle = '#00FF00';
+    ctx.font = 'bold 14px "Courier New"';
+    ctx.fillText('CONTROLS:', panelX + 10, yPos);
+    yPos += 20;
+    
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '11px "Courier New"';
+    ctx.fillText('← → Arrow Keys: Move', panelX + 15, yPos);
+    yPos += 16;
+    ctx.fillText('SPACE: Fire weapon', panelX + 15, yPos);
+    yPos += 16;
+    ctx.fillText('G: Throw grenade', panelX + 15, yPos);
+    yPos += 16;
+    ctx.fillText('H: Toggle this help', panelX + 15, yPos);
+    yPos += 16;
+    ctx.fillText('M: Toggle audio', panelX + 15, yPos);
+    
+    // Close hint at bottom
+    ctx.fillStyle = '#888888';
+    ctx.font = '10px "Courier New"';
+    ctx.textAlign = "center";
+    ctx.fillText('Press H to close', panelX + panelWidth / 2, panelY + panelHeight - 15);
+}
+
 function drawUI() {
     // Draw semi-transparent background for UI area at the top
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
@@ -1442,6 +1611,8 @@ function drawUI() {
     drawTimeCounter();
     drawScore();
     drawAudioToggle();
+    drawHelpButton(); // Help toggle button
+    drawHelpPanel(); // Draw help panel if visible
 }
 
 
@@ -2058,6 +2229,9 @@ function keyDown(e) {
     } else if (e.key === 'm' || e.key === 'M') {
         toggleAudio();
         playSound('powerup'); // Test sound when toggling on
+    } else if (e.key === 'h' || e.key === 'H') {
+        showHelp = !showHelp;
+        e.preventDefault();
     }
 }
 

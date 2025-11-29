@@ -210,6 +210,64 @@ const sounds = {
             oscillator.start(audioCtx.currentTime + note.time);
             oscillator.stop(audioCtx.currentTime + note.time + duration);
         });
+    },
+
+    // Grenade launch - whoosh sound
+    grenadeLaunch: (audioCtx) => {
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        oscillator.type = 'sawtooth';
+        oscillator.frequency.setValueAtTime(600, audioCtx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(300, audioCtx.currentTime + 0.25);
+
+        gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        oscillator.start(audioCtx.currentTime);
+        oscillator.stop(audioCtx.currentTime + 0.25);
+    },
+
+    // Grenade explosion - big boom with fragments
+    grenadeExplode: (audioCtx) => {
+        // Main explosion
+        const explosion = audioCtx.createOscillator();
+        const explosionGain = audioCtx.createGain();
+
+        explosion.type = 'sawtooth';
+        explosion.frequency.setValueAtTime(500, audioCtx.currentTime);
+        explosion.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.4);
+
+        explosionGain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        explosionGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+
+        explosion.connect(explosionGain);
+        explosionGain.connect(audioCtx.destination);
+
+        explosion.start(audioCtx.currentTime);
+        explosion.stop(audioCtx.currentTime + 0.4);
+
+        // Fragment scatter sounds
+        [0.1, 0.15, 0.2, 0.25].forEach((delay) => {
+            const fragment = audioCtx.createOscillator();
+            const fragmentGain = audioCtx.createGain();
+
+            fragment.type = 'square';
+            fragment.frequency.setValueAtTime(1200, audioCtx.currentTime + delay);
+            fragment.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + delay + 0.1);
+
+            fragmentGain.gain.setValueAtTime(0.1, audioCtx.currentTime + delay);
+            fragmentGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + delay + 0.1);
+
+            fragment.connect(fragmentGain);
+            fragmentGain.connect(audioCtx.destination);
+
+            fragment.start(audioCtx.currentTime + delay);
+            fragment.stop(audioCtx.currentTime + delay + 0.1);
+        });
     }
 };
 
@@ -257,9 +315,13 @@ for (let layer = 0; layer < 3; layer++) {
 // --- GAME CONSTANTS ---
 const PLAYER_WIDTH = 48; // Matched to sprite
 const PLAYER_HEIGHT = 48; // Matched to sprite
-const PLAYER_SPEED = 5;
+const PLAYER_SPEED = 6.5; // Increased for smoother, more responsive control
 const BULLET_SPEED = 7;
 const BULLET_RADIUS = 3;
+const GRENADE_SPEED = 5;
+const GRENADE_RADIUS = 5;
+const GRENADE_FRAGMENT_COUNT = 4;
+const GRENADE_FRAGMENT_SPEED = 6;
 const ENEMY_ROWS = 5;
 const ENEMY_COLS = 10;
 const ENEMY_WIDTH = 48; // Matched to sprite
@@ -281,7 +343,7 @@ let player = {
     dx: 0,
     heat: 0,
     maxHeat: 100,
-    heatPerShot: 5,                    // Overheat in 10 shots
+    heatPerShot: 8,                    // Overheat in 10 shots
     heatDissipationRate: 0.5,           // Moderate cooling rate
     heatDissipationDelay: 500,          // Brief 500ms delay before cooling starts
     weaponJammed: false,
@@ -291,15 +353,20 @@ let player = {
     shield: 100,
     maxShield: 100,
     shieldRechargeRate: 0.2,
-    shootCooldown: 250,
+    shootCooldown: 200, // Reduced for more responsive shooting
     lastShotTime: 0,
     lives: 3,
-    maxLives: 3
+    maxLives: 3,
+    ammoBoostActive: false,
+    ammoBoostShots: 0,
+    grenades: 1,
+    maxGrenades: 3
 };
 let bullets = [];
 let enemyBullets = [];
 let enemies = [];
 let powerups = [];
+let grenades = []; // Main grenades and fragments
 
 // Powerup constants
 const POWERUP_SIZE = 20;
@@ -310,17 +377,23 @@ const ENEMY_BULLET_DAMAGE = 30;
 const LEVEL_BALANCE = {
     1: {
         dropChance: 0.15,        // 15% - Lower since shields are offline
-        livesDropWeight: 0.9,    // 90% lives, 10% shield (shield inactive but can drop)
+        livesDropWeight: 0.65,   // 65% lives, 20% shield, 10% ammo, 5% grenade
+        shieldDropWeight: 0.20,
+        ammoDropWeight: 0.10,
         shootingIntensity: 0.8   // 80% base shooting rate
     },
     2: {
         dropChance: 0.25,        // 25% - Higher to sustain shield
-        livesDropWeight: 0.3,    // 30% lives, 70% shield (shields are critical)
+        livesDropWeight: 0.20,   // 20% lives, 50% shield, 20% ammo, 10% grenade
+        shieldDropWeight: 0.50,
+        ammoDropWeight: 0.20,
         shootingIntensity: 1.2   // 120% base shooting rate
     },
     3: {
-        dropChance: 0.30,        // 30% - Highest due to Sentinels
-        livesDropWeight: 0.4,    // 40% lives, 60% shield (balanced)
+        dropChance: 0.30,        // 30% - Highest due to Sentinels - more grenades!
+        livesDropWeight: 0.25,   // 25% lives, 40% shield, 15% ammo, 20% grenade
+        shieldDropWeight: 0.40,
+        ammoDropWeight: 0.15,
         shootingIntensity: 1.5   // 150% base shooting rate (intense!)
     }
 };
@@ -328,6 +401,14 @@ const LEVEL_BALANCE = {
 
 // --- GAME STATE ---
 let gameStartTime = 0;
+
+// Key state tracking for smoother controls
+const keys = {
+    left: false,
+    right: false,
+    space: false,
+    grenade: false
+};
 let strikeVolumeMultiplier = 1;
 let intensitySpikeActive = false;
 let nextIntensitySpikeTime = 0;
@@ -436,7 +517,7 @@ function createFunnelFormation(level) {
 // Level 3: The Citadel - 4x4 Sentinel core with Normal shell
 function createCitadelFormation(level) {
     const startX = 100;
-    const startY = 50;
+    const startY = 20; // Pushed higher to leave limited space at bottom
     const gridSize = 10; // 10x10 total grid
     const sentinelStartRow = 3;
     const sentinelStartCol = 3;
@@ -483,7 +564,17 @@ function drawBackground() {
     const level = LEVELS[currentLevel];
     if (level) {
         ctx.fillStyle = level.themeColor;
-        ctx.globalAlpha = 0.05; // Subtle tint
+        // Level 3: Stronger tint for oppressive Sentinel Fortress atmosphere
+        ctx.globalAlpha = currentLevel === 3 ? 0.12 : 0.05;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Intensity spike screen flash
+    if (intensitySpikeActive) {
+        const flashAlpha = Math.abs(Math.sin(Date.now() / 100)) * 0.15 + 0.1;
+        ctx.fillStyle = '#FF0000';
+        ctx.globalAlpha = flashAlpha;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.globalAlpha = 1.0;
     }
@@ -537,9 +628,9 @@ function drawEnemies() {
         // Draw custom space invader enemy
         let color = intensitySpikeActive ? '#FF0000' : '#00FF00';
 
-        // Sentinel enemies are blue
+        // Sentinel enemies have metallic dark armor
         if (enemy.type === 'sentinel' && !intensitySpikeActive) {
-            color = '#4169E1'; // Royal Blue
+            color = '#3C3C3C'; // Dark metallic gray
         }
 
         ctx.fillStyle = color;
@@ -569,19 +660,90 @@ function drawEnemies() {
             ctx.fillRect(enemy.x + enemy.width - 11, enemy.y - 4, 3, 4);
         }
 
-        // Draw shield overlay for sentinels
-        if (enemy.type === 'sentinel' && enemy.shieldHits > 0) {
-            ctx.fillStyle = 'rgba(0, 191, 255, 0.3)'; // Cyan transparent
-            ctx.fillRect(enemy.x, enemy.y, enemy.width, height);
-            ctx.strokeStyle = '#00BFFF';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(enemy.x, enemy.y, enemy.width, height);
+        // Sentinel core - flashing power source
+        if (enemy.type === 'sentinel' && !intensitySpikeActive) {
+            const coreFlash = Math.sin(Date.now() / 150) > 0;
+            ctx.fillStyle = coreFlash ? '#FF0000' : '#FFAA00'; // Red/Orange pulse
+            const coreSize = 6;
+            ctx.fillRect(
+                enemy.x + enemy.width / 2 - coreSize / 2,
+                enemy.y + height / 2 - coreSize / 2,
+                coreSize,
+                coreSize
+            );
+        }
 
-            // Shield count indicator
-            ctx.fillStyle = '#FFFFFF';
-            ctx.font = 'bold 12px "Courier New"';
+        // Draw enhanced shield overlay for sentinels
+        if (enemy.type === 'sentinel' && enemy.shieldHits > 0) {
+            // Shield color based on integrity
+            let shieldColor, shieldBorder, shieldAlpha;
+            if (enemy.shieldHits >= 2) {
+                shieldColor = 'rgba(0, 191, 255, 0.3)'; // Cyan - strong
+                shieldBorder = '#00BFFF';
+                shieldAlpha = 0.3;
+            } else {
+                // Critical - 1 hit left
+                shieldColor = 'rgba(255, 165, 0, 0.4)'; // Orange - critical
+                shieldBorder = '#FFA500';
+                shieldAlpha = 0.4;
+            }
+
+            // Shield fill
+            ctx.fillStyle = shieldColor;
+            ctx.fillRect(enemy.x, enemy.y, enemy.width, height);
+
+            // Shield quadrant corners for energy barrier effect
+            const cornerSize = 8;
+            ctx.strokeStyle = shieldBorder;
+            ctx.lineWidth = 3;
+
+            // Top-left corner
+            ctx.beginPath();
+            ctx.moveTo(enemy.x, enemy.y + cornerSize);
+            ctx.lineTo(enemy.x, enemy.y);
+            ctx.lineTo(enemy.x + cornerSize, enemy.y);
+            ctx.stroke();
+
+            // Top-right corner
+            ctx.beginPath();
+            ctx.moveTo(enemy.x + enemy.width - cornerSize, enemy.y);
+            ctx.lineTo(enemy.x + enemy.width, enemy.y);
+            ctx.lineTo(enemy.x + enemy.width, enemy.y + cornerSize);
+            ctx.stroke();
+
+            // Bottom-left corner
+            ctx.beginPath();
+            ctx.moveTo(enemy.x, enemy.y + height - cornerSize);
+            ctx.lineTo(enemy.x, enemy.y + height);
+            ctx.lineTo(enemy.x + cornerSize, enemy.y + height);
+            ctx.stroke();
+
+            // Bottom-right corner
+            ctx.beginPath();
+            ctx.moveTo(enemy.x + enemy.width - cornerSize, enemy.y + height);
+            ctx.lineTo(enemy.x + enemy.width, enemy.y + height);
+            ctx.lineTo(enemy.x + enemy.width, enemy.y + height - cornerSize);
+            ctx.stroke();
+
+            // Shield flash when critical (1 hit left)
+            if (enemy.shieldHits === 1) {
+                const flash = Math.sin(Date.now() / 80) > 0;
+                if (flash) {
+                    ctx.strokeStyle = '#FFFF00'; // Yellow flash
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(enemy.x, enemy.y, enemy.width, height);
+                }
+            }
+
+            // Shield hit count - larger and more prominent
+            const countColor = enemy.shieldHits === 1 ? '#FF0000' : '#FFFFFF';
+            ctx.fillStyle = countColor;
+            ctx.font = 'bold 16px "Courier New"';
             ctx.textAlign = 'center';
-            ctx.fillText(enemy.shieldHits, enemy.x + enemy.width / 2, enemy.y + height / 2);
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 3;
+            ctx.strokeText(enemy.shieldHits, enemy.x + enemy.width / 2, enemy.y + height / 2 + 5);
+            ctx.fillText(enemy.shieldHits, enemy.x + enemy.width / 2, enemy.y + height / 2 + 5);
         }
     });
 }
@@ -636,6 +798,84 @@ function drawPowerups() {
             ctx.strokeStyle = '#FFFFFF';
             ctx.lineWidth = 2;
             ctx.strokeRect(powerup.x, powerup.y, POWERUP_SIZE, POWERUP_SIZE);
+        } else if (powerup.type === 'ammo') {
+            // Draw ammo powerup (yellow bullet/magazine)
+            ctx.fillStyle = '#FFFF00'; // Yellow color
+            // Magazine body
+            ctx.fillRect(powerup.x + 4, powerup.y + 6, POWERUP_SIZE - 8, POWERUP_SIZE - 10);
+
+            // Bullets sticking out
+            ctx.fillStyle = '#FFA500'; // Orange bullet tips
+            ctx.fillRect(powerup.x + 6, powerup.y + 3, 3, 4);
+            ctx.fillRect(powerup.x + 11, powerup.y + 3, 3, 4);
+
+            // Border
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(powerup.x, powerup.y, POWERUP_SIZE, POWERUP_SIZE);
+        } else if (powerup.type === 'grenade') {
+            // Draw grenade powerup (dark gray with orange core)
+            ctx.fillStyle = '#808080'; // Gray
+            ctx.beginPath();
+            ctx.arc(powerup.x + POWERUP_SIZE/2, powerup.y + POWERUP_SIZE/2, 8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Orange core
+            ctx.fillStyle = '#FF6600';
+            ctx.beginPath();
+            ctx.arc(powerup.x + POWERUP_SIZE/2, powerup.y + POWERUP_SIZE/2, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Yellow center flash
+            if (Math.sin(Date.now() / 150) > 0) {
+                ctx.fillStyle = '#FFFF00';
+                ctx.beginPath();
+                ctx.arc(powerup.x + POWERUP_SIZE/2, powerup.y + POWERUP_SIZE/2, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Border
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(powerup.x, powerup.y, POWERUP_SIZE, POWERUP_SIZE);
+        }
+    });
+}
+
+function drawGrenades() {
+    grenades.forEach(grenade => {
+        if (grenade.type === 'main') {
+            // Draw main grenade - larger dark projectile
+            ctx.fillStyle = '#808080'; // Gray
+            ctx.beginPath();
+            ctx.arc(grenade.x, grenade.y, GRENADE_RADIUS, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Add detail - center core
+            ctx.fillStyle = '#FF4500'; // Orange-red core
+            ctx.beginPath();
+            ctx.arc(grenade.x, grenade.y, GRENADE_RADIUS - 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Blinking indicator
+            if (Math.sin(Date.now() / 100) > 0) {
+                ctx.fillStyle = '#FFFF00';
+                ctx.beginPath();
+                ctx.arc(grenade.x, grenade.y, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        } else if (grenade.type === 'fragment') {
+            // Draw fragment - small bright projectile
+            ctx.fillStyle = '#FF6600'; // Bright orange
+            ctx.beginPath();
+            ctx.arc(grenade.x, grenade.y, 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Glow effect
+            ctx.fillStyle = 'rgba(255, 102, 0, 0.3)';
+            ctx.beginPath();
+            ctx.arc(grenade.x, grenade.y, 5, 0, Math.PI * 2);
+            ctx.fill();
         }
     });
 }
@@ -783,11 +1023,55 @@ function drawHeatBar() {
     } else if (player.weaponJammed) {
         ctx.fillStyle = '#FF0000';
         ctx.fillText('WEAPON JAMMED!', startX + barWidth / 2, startY + 14);
+    } else if (player.ammoBoostActive) {
+        ctx.fillStyle = '#FFFF00';
+        ctx.fillText(`⚡ BOOST: ${player.ammoBoostShots} shots ⚡`, startX + barWidth / 2, startY + 14);
     } else if (heatPercent > 0.7) {
         ctx.fillStyle = '#FFFF00';
         ctx.fillText('⚠ DANGER ZONE ⚠', startX + barWidth / 2, startY + 14);
     } else {
         ctx.fillText(`HEAT: ${Math.floor(player.heat)}/${player.maxHeat}`, startX + barWidth / 2, startY + 14);
+    }
+}
+
+function drawGrenadeCount() {
+    const startX = 10;
+    const startY = 70; // Below heat bar
+    const grenadeSize = 12;
+    const grenadeSpacing = 18;
+
+    // Label
+    ctx.fillStyle = 'white';
+    ctx.font = '12px "Courier New"';
+    ctx.textAlign = "left";
+    ctx.fillText('GRENADES (G):', startX, startY);
+
+    // Draw grenade icons
+    for (let i = 0; i < player.maxGrenades; i++) {
+        const x = startX + (i * grenadeSpacing);
+        const y = startY + 10;
+        const isFilled = i < player.grenades;
+
+        // Grenade icon
+        ctx.fillStyle = isFilled ? '#FF6600' : '#333333'; // Orange if available, dark if empty
+        ctx.beginPath();
+        ctx.arc(x + grenadeSize/2, y + grenadeSize/2, grenadeSize/2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Border
+        ctx.strokeStyle = isFilled ? '#FFAA00' : '#666666';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x + grenadeSize/2, y + grenadeSize/2, grenadeSize/2, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Core indicator
+        if (isFilled) {
+            ctx.fillStyle = '#FFFF00';
+            ctx.beginPath();
+            ctx.arc(x + grenadeSize/2, y + grenadeSize/2, 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
     }
 }
 
@@ -831,6 +1115,7 @@ function drawUI() {
     drawHealthBar();
     drawShieldBar();
     drawHeatBar();
+    drawGrenadeCount();
     drawLevelDisplay();
     drawAudioToggle();
 }
@@ -916,7 +1201,17 @@ function detectCollisions() {
                     const balance = LEVEL_BALANCE[currentLevel];
                     if (Math.random() < balance.dropChance) {
                         // Determine powerup type based on level weights
-                        const powerupType = Math.random() < balance.livesDropWeight ? 'lives' : 'shield';
+                        const rand = Math.random();
+                        let powerupType;
+                        if (rand < balance.livesDropWeight) {
+                            powerupType = 'lives';
+                        } else if (rand < balance.livesDropWeight + balance.shieldDropWeight) {
+                            powerupType = 'shield';
+                        } else if (rand < balance.livesDropWeight + balance.shieldDropWeight + balance.ammoDropWeight) {
+                            powerupType = 'ammo';
+                        } else {
+                            powerupType = 'grenade';
+                        }
                         powerups.push({
                             x: enemy.x + enemy.width / 2 - POWERUP_SIZE / 2,
                             y: enemy.y,
@@ -927,6 +1222,70 @@ function detectCollisions() {
                     enemies.splice(enemyIndex, 1);
                 }
                 break; // Bullet hit something, move to next bullet
+            }
+        }
+    }
+
+    // Grenade collisions (iterate backwards)
+    for (let grenadeIndex = grenades.length - 1; grenadeIndex >= 0; grenadeIndex--) {
+        const grenade = grenades[grenadeIndex];
+
+        if (grenade.type === 'main') {
+            // Main grenade hits enemy and explodes
+            for (let enemyIndex = enemies.length - 1; enemyIndex >= 0; enemyIndex--) {
+                const enemy = enemies[enemyIndex];
+                const height = intensitySpikeActive ? 40 : enemy.height;
+
+                if (grenade.x > enemy.x && grenade.x < enemy.x + enemy.width &&
+                    grenade.y > enemy.y && grenade.y < enemy.y + height) {
+                    // Explode grenade on impact
+                    explodeGrenade(grenade, grenadeIndex);
+                    break; // Move to next grenade
+                }
+            }
+        } else if (grenade.type === 'fragment') {
+            // Fragment hits and damages enemy
+            for (let enemyIndex = enemies.length - 1; enemyIndex >= 0; enemyIndex--) {
+                const enemy = enemies[enemyIndex];
+                const height = intensitySpikeActive ? 40 : enemy.height;
+
+                if (grenade.x > enemy.x && grenade.x < enemy.x + enemy.width &&
+                    grenade.y > enemy.y && grenade.y < enemy.y + height) {
+                    grenades.splice(grenadeIndex, 1);
+
+                    // Handle sentinel shields
+                    if (enemy.type === 'sentinel' && enemy.shieldHits > 0) {
+                        enemy.shieldHits--;
+                        playSound('enemyHit');
+                    } else {
+                        // Enemy destroyed
+                        playSound('enemyDestroy');
+
+                        // Spawn powerup chance when enemy dies
+                        const balance = LEVEL_BALANCE[currentLevel];
+                        if (Math.random() < balance.dropChance) {
+                            const rand = Math.random();
+                            let powerupType;
+                            if (rand < balance.livesDropWeight) {
+                                powerupType = 'lives';
+                            } else if (rand < balance.livesDropWeight + balance.shieldDropWeight) {
+                                powerupType = 'shield';
+                            } else if (rand < balance.livesDropWeight + balance.shieldDropWeight + balance.ammoDropWeight) {
+                                powerupType = 'ammo';
+                            } else {
+                                powerupType = 'grenade';
+                            }
+                            powerups.push({
+                                x: enemy.x + enemy.width / 2 - POWERUP_SIZE / 2,
+                                y: enemy.y,
+                                type: powerupType
+                            });
+                        }
+
+                        enemies.splice(enemyIndex, 1);
+                    }
+                    break; // Fragment hit something, move to next fragment
+                }
             }
         }
     }
@@ -986,6 +1345,15 @@ function detectCollisions() {
             } else if (powerup.type === 'shield') {
                 player.shield = Math.min(player.shield + 50, player.maxShield);
                 playSound('powerup');
+            } else if (powerup.type === 'ammo') {
+                player.ammoBoostActive = true;
+                player.ammoBoostShots = 100;
+                playSound('powerup');
+            } else if (powerup.type === 'grenade') {
+                if (player.grenades < player.maxGrenades) {
+                    player.grenades++;
+                    playSound('powerup');
+                }
             }
 
             powerups.splice(i, 1);
@@ -1168,6 +1536,9 @@ function update() {
         return;
     }
 
+    // Process input every frame for smooth controls
+    handleInput();
+
     updateGameState(now);
 
     drawBackground();
@@ -1175,12 +1546,14 @@ function update() {
     drawEnemies();
     drawBullets();
     drawEnemyBullets();
+    drawGrenades();
     drawPowerups();
     drawUI();
 
     movePlayer();
     moveBullets();
     moveEnemyBullets();
+    moveGrenades();
     moveEnemies();
     movePowerups();
     enemyShoot();
@@ -1192,18 +1565,60 @@ function update() {
 
 // --- EVENT HANDLERS ---
 function keyDown(e) {
-    if (e.key === 'ArrowRight' || e.key === 'Right') player.dx = player.speed;
-    else if (e.key === 'ArrowLeft' || e.key === 'Left') player.dx = -player.speed;
-    else if (e.key === ' ' || e.key === 'Spacebar') shoot();
-    else if (e.key === 'm' || e.key === 'M') {
+    if (e.key === 'ArrowRight' || e.key === 'Right') {
+        keys.right = true;
+        e.preventDefault();
+    } else if (e.key === 'ArrowLeft' || e.key === 'Left') {
+        keys.left = true;
+        e.preventDefault();
+    } else if (e.key === ' ' || e.key === 'Spacebar') {
+        keys.space = true;
+        e.preventDefault();
+    } else if (e.key === 'g' || e.key === 'G') {
+        keys.grenade = true;
+        e.preventDefault();
+    } else if (e.key === 'm' || e.key === 'M') {
         toggleAudio();
         playSound('powerup'); // Test sound when toggling on
     }
 }
 
 function keyUp(e) {
-    if (e.key === 'ArrowRight' || e.key === 'Right' || e.key === 'ArrowLeft' || e.key === 'Left') {
+    if (e.key === 'ArrowRight' || e.key === 'Right') {
+        keys.right = false;
+        e.preventDefault();
+    } else if (e.key === 'ArrowLeft' || e.key === 'Left') {
+        keys.left = false;
+        e.preventDefault();
+    } else if (e.key === ' ' || e.key === 'Spacebar') {
+        keys.space = false;
+        e.preventDefault();
+    } else if (e.key === 'g' || e.key === 'G') {
+        keys.grenade = false;
+        e.preventDefault();
+    }
+}
+
+// Process input every frame for smooth controls
+function handleInput() {
+    // Movement - process every frame
+    if (keys.right && !keys.left) {
+        player.dx = player.speed;
+    } else if (keys.left && !keys.right) {
+        player.dx = -player.speed;
+    } else {
         player.dx = 0;
+    }
+
+    // Continuous shooting when space is held
+    if (keys.space) {
+        shoot();
+    }
+
+    // Grenade launch (one-time press, handled in keyDown)
+    if (keys.grenade) {
+        launchGrenade();
+        keys.grenade = false; // Prevent continuous launch
     }
 }
 
@@ -1221,11 +1636,93 @@ function shoot() {
 
     // Normal shooting
     if (now - player.lastShotTime > player.shootCooldown && !player.weaponJammed) {
-        player.heat = Math.min(player.maxHeat, player.heat + player.heatPerShot);
+        // Check if ammo boost is active
+        if (player.ammoBoostActive && player.ammoBoostShots > 0) {
+            player.heat = Math.min(player.maxHeat, player.heat + 1); // Only 1 heat per shot
+            player.ammoBoostShots--;
+            if (player.ammoBoostShots === 0) {
+                player.ammoBoostActive = false;
+            }
+        } else {
+            player.heat = Math.min(player.maxHeat, player.heat + player.heatPerShot);
+        }
+
         player.lastShotTime = now;
         bullets.push({ x: player.x + player.width / 2, y: player.y });
         playSound('playerShoot');
     }
+}
+
+function launchGrenade() {
+    // Check if player has grenades and is not locked out
+    if (player.grenades > 0 && !player.weaponLockoutActive) {
+        player.grenades--;
+        grenades.push({
+            x: player.x + player.width / 2,
+            y: player.y,
+            type: 'main',
+            hasExploded: false
+        });
+        playSound('grenadeLaunch');
+    }
+}
+
+function moveGrenades() {
+    for (let i = grenades.length - 1; i >= 0; i--) {
+        const grenade = grenades[i];
+
+        if (grenade.type === 'main') {
+            // Move main grenade upward
+            grenade.y -= GRENADE_SPEED;
+
+            // Check for explosion conditions
+            // 1. Reached top of screen
+            // 2. Reached explosion altitude (y < 100)
+            // 3. Hit an enemy (checked in collision detection)
+            if (grenade.y < 100 || grenade.y < 0) {
+                explodeGrenade(grenade, i);
+            }
+        } else if (grenade.type === 'fragment') {
+            // Move fragments in their trajectory
+            grenade.x += grenade.dx;
+            grenade.y += grenade.dy;
+
+            // Remove fragments that go off screen
+            if (grenade.x < 0 || grenade.x > canvas.width ||
+                grenade.y < 0 || grenade.y > canvas.height) {
+                grenades.splice(i, 1);
+            }
+        }
+    }
+}
+
+function explodeGrenade(grenade, grenadeIndex) {
+    if (grenade.hasExploded) return;
+
+    grenade.hasExploded = true;
+    playSound('grenadeExplode');
+
+    // Create fragments spreading outward
+    const fragmentAngles = [
+        -Math.PI / 4,     // Up-left
+        Math.PI / 4,      // Up-right
+        -3 * Math.PI / 4, // Down-left
+        3 * Math.PI / 4   // Down-right
+    ];
+
+    for (let i = 0; i < GRENADE_FRAGMENT_COUNT; i++) {
+        const angle = fragmentAngles[i];
+        grenades.push({
+            x: grenade.x,
+            y: grenade.y,
+            type: 'fragment',
+            dx: Math.cos(angle) * GRENADE_FRAGMENT_SPEED,
+            dy: Math.sin(angle) * GRENADE_FRAGMENT_SPEED
+        });
+    }
+
+    // Remove the main grenade
+    grenades.splice(grenadeIndex, 1);
 }
 
 
@@ -1238,6 +1735,14 @@ console.log('Enemies created:', enemies.length);
 
 document.addEventListener('keydown', keyDown);
 document.addEventListener('keyup', keyUp);
+
+// Reset all keys when window loses focus (prevents stuck keys)
+window.addEventListener('blur', () => {
+    keys.left = false;
+    keys.right = false;
+    keys.space = false;
+    player.dx = 0;
+});
 
 // Start game loop
 update();

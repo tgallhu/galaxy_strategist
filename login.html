@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Galactic Strategist</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .login-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #000015;
+        }
+        .login-box {
+            background-color: rgba(0, 0, 0, 0.9);
+            border: 2px solid #00FFFF;
+            padding: 40px;
+            border-radius: 10px;
+            max-width: 400px;
+            width: 90%;
+        }
+        .login-box h1 {
+            color: #00FFFF;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .login-box p {
+            color: #888;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        .form-group label {
+            display: block;
+            color: #00FFFF;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            background-color: #111;
+            border: 1px solid #333;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #00FFFF;
+        }
+        .submit-btn {
+            width: 100%;
+            padding: 14px;
+            background-color: #00FFFF;
+            color: #000;
+            border: none;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .submit-btn:hover {
+            background-color: #00BFFF;
+        }
+        .submit-btn:disabled {
+            background-color: #444;
+            cursor: not-allowed;
+        }
+        .error-message {
+            color: #FF0066;
+            margin-top: 15px;
+            font-size: 14px;
+            display: none;
+        }
+        .error-message.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <h1>🚀 Galactic Strategist</h1>
+            <p>Enter your name and email to play</p>
+            
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="name">Your Name:</label>
+                    <input type="text" id="name" name="name" required autocomplete="name" placeholder="John Doe">
+                </div>
+                
+                <div class="form-group">
+                    <label for="email">Your Email:</label>
+                    <input type="email" id="email" name="email" required autocomplete="email" placeholder="your.email@example.com">
+                </div>
+                
+                <button type="submit" class="submit-btn" id="submitBtn">LOGIN</button>
+                
+                <div class="error-message" id="errorMessage"></div>
+            </form>
+        </div>
+    </div>
+
+    <script src="whitelist.js"></script>
+    <script src="auth.js"></script>
+    <script>
+        const form = document.getElementById('loginForm');
+        const errorMessage = document.getElementById('errorMessage');
+        const submitBtn = document.getElementById('submitBtn');
+
+        // Check if already logged in
+        const currentUser = getCurrentUser();
+        if (currentUser) {
+            // Already logged in, redirect to game
+            window.location.href = 'index.html';
+        }
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const name = document.getElementById('name').value.trim();
+            const email = document.getElementById('email').value.trim();
+            
+            // Hide previous error
+            errorMessage.classList.remove('show');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'LOGGING IN...';
+            
+            // Attempt login
+            const result = login(name, email);
+            
+            if (result.success) {
+                // Success! Redirect to game
+                window.location.href = 'index.html';
+            } else {
+                // Show error
+                errorMessage.textContent = result.message;
+                errorMessage.classList.add('show');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'LOGIN';
+            }
+        });
+    </script>
+</body>
+</html>
+

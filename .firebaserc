@@ -1,0 +1,7 @@
+{
+  "projects": {
+    "default": "galaxy-e07b4",
+    "test": "test-c409c",
+    "galaxy": "galaxy-e07b4"
+  }
+}
