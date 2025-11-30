@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Query Telemetry Data</title>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
+    <script src="firebase-config.js"></script>
+</head>
+<body>
+    <h1>Telemetry Query</h1>
+    <div id="output"></div>
+
+    <script>
+        async function queryEnemyKills() {
+            const db = firebase.firestore();
+            const output = document.getElementById('output');
+
+            // Query ALL telemetry data (not filtered by email)
+            output.innerHTML = `<p>Querying ALL telemetry data...</p>`;
+
+            try {
+                const snapshot = await db.collection('telemetry').get();
+
+                let html = `<h2>Total Sessions: ${snapshot.size}</h2>`;
+
+                let totalKills = 0;
+                let killsByType = {};
+                let deaths = [];
+                let sessions = [];
+
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    sessions.push({
+                        sessionId: data.sessionId,
+                        level: data.levelReached,
+                        score: data.finalScore,
+                        playTime: data.playTime
+                    });
+
+                    if (data.combatEvents) {
+                        data.combatEvents.forEach(event => {
+                            if (event.type === 'enemy_killed') {  // Fixed: was 'enemy_kill', should be 'enemy_killed'
+                                totalKills++;
+                                const enemyType = event.enemyType || 'unknown';
+                                killsByType[enemyType] = (killsByType[enemyType] || 0) + 1;
+                            }
+                            if (event.type === 'player_death') {
+                                deaths.push({
+                                    level: event.level,
+                                    x: event.x,
+                                    y: event.y,
+                                    cause: event.cause
+                                });
+                            }
+                        });
+                    }
+                });
+
+                html += `<h2>Total Enemy Kills: ${totalKills}</h2>`;
+
+                if (Object.keys(killsByType).length > 0) {
+                    html += '<h3>Kills by Enemy Type:</h3><ul>';
+                    Object.entries(killsByType).forEach(([type, count]) => {
+                        html += `<li><strong>${type}</strong>: ${count}</li>`;
+                    });
+                    html += '</ul>';
+                }
+
+                html += `<h2>Total Deaths: ${deaths.length}</h2>`;
+                if (deaths.length > 0) {
+                    html += '<h3>Death Details:</h3><ul>';
+                    deaths.forEach((death, i) => {
+                        html += `<li>Death ${i + 1}: Level ${death.level}, Position (${Math.round(death.x)}, ${Math.round(death.y)}), Cause: ${death.cause}</li>`;
+                    });
+                    html += '</ul>';
+                } else {
+                    html += '<p><strong>No deaths recorded with position data</strong></p>';
+                }
+
+                html += '<h3>Sessions:</h3><ul>';
+                sessions.forEach((session, i) => {
+                    html += `<li>Session ${i + 1}: Level ${session.level}, Score ${session.score}, Play Time: ${Math.round(session.playTime)}s</li>`;
+                });
+                html += '</ul>';
+
+                // Debug: Show raw data structure
+                html += '<h3>Debug - Raw Data:</h3>';
+                html += '<details><summary>Click to expand raw session data</summary><pre>';
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    html += `\n--- Session ${doc.id} ---\n`;
+                    html += `playerEmail: ${data.playerEmail}\n`;
+                    html += `levelReached: ${data.levelReached}\n`;
+                    html += `finalScore: ${data.finalScore}\n`;
+                    html += `gameEndReason: ${data.gameEndReason}\n`;
+                    html += `playTime: ${data.playTime}\n`;
+                    html += `combatEvents count: ${data.combatEvents ? data.combatEvents.length : 0}\n`;
+
+                    // Check heat map filter condition
+                    const isDeath = data.gameEndReason === 'death' || data.finalScore === 0;
+                    html += `isDeath (for heat map): ${isDeath}\n`;
+                    if (data.combatEvents && data.combatEvents.length > 0) {
+                        html += `Combat events:\n`;
+                        data.combatEvents.forEach((event, i) => {
+                            html += `  ${i}: type=${event.type}, ${JSON.stringify(event).substring(0, 100)}...\n`;
+                        });
+                    }
+                    html += '\n';
+                });
+                html += '</pre></details>';
+
+                output.innerHTML = html;
+
+            } catch (error) {
+                output.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+                console.error('Error querying telemetry:', error);
+            }
+        }
+
+        // Run query when page loads
+        window.addEventListener('load', queryEnemyKills);
+    </script>
+</body>
+</html>

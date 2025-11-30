@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Difficulty Balancing Dashboard - Galactic Strategist</title>
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+    <!-- Chart.js for visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 100%);
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .header {
+            text-align: center;
+            padding: 20px;
+            border-bottom: 3px solid #00FFFF;
+            margin-bottom: 30px;
+            background: rgba(0, 0, 0, 0.6);
+        }
+        
+        .header h1 {
+            color: #00FFFF;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        .nav-links {
+            margin-top: 15px;
+        }
+        
+        .nav-links a {
+            color: #00FFFF;
+            text-decoration: none;
+            margin: 0 15px;
+            padding: 8px 15px;
+            border: 1px solid #00FFFF;
+            transition: all 0.3s;
+        }
+        
+        .nav-links a:hover {
+            background: #00FFFF;
+            color: #000;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .section {
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid #00FFFF;
+            padding: 25px;
+            margin-bottom: 30px;
+            border-radius: 8px;
+        }
+        
+        .section h2 {
+            color: #00FFFF;
+            margin-bottom: 20px;
+            font-size: 24px;
+            border-bottom: 2px solid #00FFFF;
+            padding-bottom: 10px;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-bottom: 20px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .stat-card {
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid #00FFFF;
+            padding: 15px;
+            text-align: center;
+        }
+        
+        .stat-card .value {
+            font-size: 32px;
+            color: #00FFFF;
+            font-weight: bold;
+        }
+        
+        .stat-card .label {
+            font-size: 14px;
+            color: #aaa;
+            margin-top: 5px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        table th, table td {
+            padding: 12px;
+            text-align: left;
+            border: 1px solid #00FFFF;
+        }
+        
+        table th {
+            background: rgba(0, 255, 255, 0.2);
+            color: #00FFFF;
+        }
+        
+        table tr:nth-child(even) {
+            background: rgba(0, 255, 255, 0.05);
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #00FFFF;
+            font-size: 18px;
+        }
+        
+        .error {
+            background: rgba(255, 0, 0, 0.2);
+            border: 2px solid #ff0000;
+            color: #ff6666;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        
+        .level-selector {
+            margin-bottom: 20px;
+        }
+        
+        .level-selector button {
+            background: rgba(0, 255, 255, 0.2);
+            border: 1px solid #00FFFF;
+            color: #00FFFF;
+            padding: 8px 20px;
+            margin-right: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .level-selector button:hover, .level-selector button.active {
+            background: #00FFFF;
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>⚖️ Difficulty Balancing Dashboard</h1>
+        <p>Analyze where players struggle and identify difficulty spikes</p>
+        <div class="nav-links">
+            <a href="dashboard-difficulty.html">Difficulty</a>
+            <a href="dashboard-tutorial.html">Tutorial</a>
+            <a href="dashboard-leaderboard.html">Leaderboard</a>
+            <a href="../index.html">← Back to Game</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Level Completion Rates -->
+        <div class="section">
+            <h2>📊 Level Progression Drop-off Rates</h2>
+            <div id="completionRatesLoading" class="loading">Loading...</div>
+            <div id="completionRatesError" class="error" style="display: none;"></div>
+            <div class="chart-container" style="display: none;" id="completionChartContainer">
+                <canvas id="completionChart"></canvas>
+            </div>
+            <div class="stats-grid" id="completionStats"></div>
+        </div>
+
+        <!-- Average Survival Time -->
+        <div class="section">
+            <h2>⏱️ Average Survival Time by Level</h2>
+            <div id="survivalLoading" class="loading">Loading...</div>
+            <div id="survivalError" class="error" style="display: none;"></div>
+            <div class="chart-container" style="display: none;" id="survivalChartContainer">
+                <canvas id="survivalChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Deadliest Enemies -->
+        <div class="section">
+            <h2>💀 Deadliest Enemies</h2>
+            <div id="enemiesLoading" class="loading">Loading...</div>
+            <div id="enemiesError" class="error" style="display: none;"></div>
+            <div id="enemiesContent" style="display: none;">
+                <div class="chart-container">
+                    <canvas id="enemiesChart"></canvas>
+                </div>
+                <table id="enemiesTable"></table>
+            </div>
+        </div>
+
+        <!-- Common Failure Points -->
+        <div class="section">
+            <h2>⏰ Common Failure Points</h2>
+            <div id="failureLoading" class="loading">Loading...</div>
+            <div id="failureError" class="error" style="display: none;"></div>
+            <div class="chart-container" style="display: none;" id="failureChartContainer">
+                <canvas id="failureChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Death Heat Map -->
+        <div class="section">
+            <h2>🔥 Death Heat Map</h2>
+            <div class="level-selector">
+                <button class="active" onclick="loadHeatMap(1)">Level 1</button>
+                <button onclick="loadHeatMap(2)">Level 2</button>
+                <button onclick="loadHeatMap(3)">Level 3</button>
+            </div>
+            <div id="heatmapLoading" class="loading">Loading...</div>
+            <div id="heatmapError" class="error" style="display: none;"></div>
+            <canvas id="heatmapCanvas" width="800" height="700" style="display: none; border: 2px solid #00FFFF; background: #000;"></canvas>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="../firebase-config.js"></script>
+    <script src="../whitelist.js"></script>
+    <script src="../auth.js"></script>
+    <script src="../admin-whitelist.js"></script>
+    <script src="../scores.js"></script>
+    <script src="../dashboard-api.js"></script>
+    <script>
+        // Chart colors (global scope)
+        const chartColors = {
+            primary: 'rgba(0, 255, 255, 0.8)',
+            secondary: 'rgba(255, 165, 0, 0.8)',
+            success: 'rgba(0, 255, 0, 0.8)',
+            danger: 'rgba(255, 0, 0.8)',
+            background: 'rgba(0, 255, 255, 0.1)'
+        };
+
+        // Check admin access
+        if (!getCurrentUser() || !isAdminEmail(getCurrentUser().email)) {
+            document.body.innerHTML = `
+                <div style="text-align: center; padding: 50px; color: #ff0000; font-family: 'Courier New', monospace; background: #000;">
+                    <h1>❌ Access Denied</h1>
+                    <p>You do not have permission to access this dashboard.</p>
+                    <p>Only administrators can view telemetry data.</p>
+                    <a href="../index.html" style="color: #00FFFF; margin-top: 20px; display: inline-block;">← Back to Game</a>
+                </div>
+            `;
+        } else {
+            // Initialize Firebase
+            initFirestore();
+
+            // Load all data on page load
+            window.addEventListener('DOMContentLoaded', async () => {
+                await loadCompletionRates();
+                await loadSurvivalTime();
+                await loadDeadliestEnemies();
+                await loadFailurePoints();
+                await loadHeatMap(1);
+            });
+        }
+
+        // Level Completion Rates
+        async function loadCompletionRates() {
+            const result = await DashboardAPI.getLevelCompletionRates();
+            
+            document.getElementById('completionRatesLoading').style.display = 'none';
+            
+            if (!result.success) {
+                document.getElementById('completionRatesError').textContent = result.error || 'Failed to load data';
+                document.getElementById('completionRatesError').style.display = 'block';
+                return;
+            }
+
+            const data = result.data;
+            document.getElementById('completionChartContainer').style.display = 'block';
+            
+            // Create bar chart
+            new Chart(document.getElementById('completionChart'), {
+                type: 'bar',
+                data: {
+                    labels: ['Level 1', 'Level 2', 'Level 3'],
+                    datasets: [{
+                        label: '% of Players Reaching Each Level',
+                        data: [data.level1, data.level2, data.level3],
+                        backgroundColor: [chartColors.success, chartColors.secondary, chartColors.danger],
+                        borderColor: [chartColors.primary, chartColors.secondary, chartColors.danger],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        },
+                        x: {
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#fff' } }
+                    }
+                }
+            });
+
+            // Stats cards
+            document.getElementById('completionStats').innerHTML = `
+                <div class="stat-card">
+                    <div class="value">${data.total}</div>
+                    <div class="label">Total Games</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">${data.level1}%</div>
+                    <div class="label">Level 1 Completion</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">${data.level2}%</div>
+                    <div class="label">Level 2 Completion</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">${data.level3}%</div>
+                    <div class="label">Level 3 Completion</div>
+                </div>
+            `;
+        }
+
+        // Average Survival Time
+        async function loadSurvivalTime() {
+            const result = await DashboardAPI.getSurvivalTimeByLevel();
+            
+            document.getElementById('survivalLoading').style.display = 'none';
+            
+            if (!result.success) {
+                document.getElementById('survivalError').textContent = result.error || 'Failed to load data';
+                document.getElementById('survivalError').style.display = 'block';
+                return;
+            }
+
+            const data = result.data;
+            document.getElementById('survivalChartContainer').style.display = 'block';
+            
+            new Chart(document.getElementById('survivalChart'), {
+                type: 'line',
+                data: {
+                    labels: ['Level 1', 'Level 2', 'Level 3'],
+                    datasets: [
+                        {
+                            label: 'Average',
+                            data: [data.level1.avg, data.level2.avg, data.level3.avg],
+                            borderColor: chartColors.primary,
+                            backgroundColor: chartColors.background,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Median',
+                            data: [data.level1.median, data.level2.median, data.level3.median],
+                            borderColor: chartColors.secondary,
+                            backgroundColor: chartColors.background,
+                            tension: 0.4
+                        },
+                        {
+                            label: '25th Percentile',
+                            data: [data.level1.p25, data.level2.p25, data.level3.p25],
+                            borderColor: chartColors.success,
+                            backgroundColor: chartColors.background,
+                            tension: 0.4,
+                            borderDash: [5, 5]
+                        },
+                        {
+                            label: '75th Percentile',
+                            data: [data.level1.p75, data.level2.p75, data.level3.p75],
+                            borderColor: chartColors.danger,
+                            backgroundColor: chartColors.background,
+                            tension: 0.4,
+                            borderDash: [5, 5]
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' },
+                            title: { display: true, text: 'Time (seconds)', color: '#fff' }
+                        },
+                        x: {
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#fff' } },
+                        title: { display: true, text: 'Survival Time Statistics by Level', color: '#fff' }
+                    }
+                }
+            });
+        }
+
+        // Deadliest Enemies
+        async function loadDeadliestEnemies() {
+            const result = await DashboardAPI.getDeadliestEnemies();
+            
+            document.getElementById('enemiesLoading').style.display = 'none';
+            
+            if (!result.success) {
+                document.getElementById('enemiesError').textContent = result.error || 'Failed to load data';
+                document.getElementById('enemiesError').style.display = 'block';
+                return;
+            }
+
+            if (result.data.length === 0) {
+                document.getElementById('enemiesError').textContent = 'No enemy kill data available';
+                document.getElementById('enemiesError').style.display = 'block';
+                return;
+            }
+
+            const data = result.data;
+            document.getElementById('enemiesContent').style.display = 'block';
+            
+            // Chart
+            new Chart(document.getElementById('enemiesChart'), {
+                type: 'bar',
+                data: {
+                    labels: data.map(e => e.enemyType || 'Unknown'),
+                    datasets: [{
+                        label: 'Deaths',
+                        data: data.map(e => e.deaths),
+                        backgroundColor: chartColors.danger,
+                        borderColor: chartColors.primary,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        },
+                        x: {
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#fff' } }
+                    }
+                }
+            });
+
+            // Table
+            let tableHTML = '<thead><tr><th>Enemy Type</th><th>Deaths</th><th>% of Total</th><th>Avg Time of Death (s)</th></tr></thead><tbody>';
+            data.forEach(enemy => {
+                tableHTML += `<tr>
+                    <td>${enemy.enemyType || 'Unknown'}</td>
+                    <td>${enemy.deaths}</td>
+                    <td>${enemy.percentage}%</td>
+                    <td>${enemy.avgTimeOfDeath}</td>
+                </tr>`;
+            });
+            tableHTML += '</tbody>';
+            document.getElementById('enemiesTable').innerHTML = tableHTML;
+        }
+
+        // Failure Points
+        async function loadFailurePoints() {
+            const result = await DashboardAPI.getFailurePoints();
+            
+            document.getElementById('failureLoading').style.display = 'none';
+            
+            if (!result.success) {
+                document.getElementById('failureError').textContent = result.error || 'Failed to load data';
+                document.getElementById('failureError').style.display = 'block';
+                return;
+            }
+
+            if (result.data.length === 0) {
+                document.getElementById('failureError').textContent = 'No failure data available';
+                document.getElementById('failureError').style.display = 'block';
+                return;
+            }
+
+            const data = result.data.slice(0, 20); // First 20 time bins
+            document.getElementById('failureChartContainer').style.display = 'block';
+            
+            new Chart(document.getElementById('failureChart'), {
+                type: 'bar',
+                data: {
+                    labels: data.map(d => d.timeRange),
+                    datasets: [{
+                        label: 'Deaths',
+                        data: data.map(d => d.deaths),
+                        backgroundColor: chartColors.danger,
+                        borderColor: chartColors.primary,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        },
+                        x: {
+                            ticks: { color: '#fff', maxRotation: 45, minRotation: 45 },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#fff' } },
+                        title: { display: true, text: 'Deaths by Time Interval', color: '#fff' }
+                    }
+                }
+            });
+        }
+
+        // Heat Map
+        let currentLevel = 1;
+        async function loadHeatMap(level) {
+            currentLevel = level;
+            document.querySelectorAll('.level-selector button').forEach(btn => btn.classList.remove('active'));
+            event?.target?.classList.add('active');
+            
+            document.getElementById('heatmapLoading').style.display = 'block';
+            document.getElementById('heatmapCanvas').style.display = 'none';
+            document.getElementById('heatmapError').style.display = 'none';
+
+            const result = await DashboardAPI.getDeathHeatMap(level);
+            
+            document.getElementById('heatmapLoading').style.display = 'none';
+            
+            if (!result.success || !result.data || result.data.length === 0) {
+                document.getElementById('heatmapError').textContent = result.error || 'No death data available for this level';
+                document.getElementById('heatmapError').style.display = 'block';
+                return;
+            }
+
+            document.getElementById('heatmapCanvas').style.display = 'block';
+            
+            // Draw heat map
+            const canvas = document.getElementById('heatmapCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Create grid for heat map
+            const gridSize = 20;
+            const grid = {};
+            let maxCount = 0;
+            
+            result.data.forEach(death => {
+                const x = Math.floor(death.x / gridSize);
+                const y = Math.floor(death.y / gridSize);
+                const key = `${x},${y}`;
+                
+                if (!grid[key]) grid[key] = 0;
+                grid[key]++;
+                if (grid[key] > maxCount) maxCount = grid[key];
+            });
+            
+            // Draw heat map
+            Object.entries(grid).forEach(([key, count]) => {
+                const [x, y] = key.split(',').map(Number);
+                const intensity = count / maxCount;
+                
+                const color = intensity > 0.5 
+                    ? `rgba(255, ${255 * (1 - intensity)}, 0, ${intensity})`
+                    : `rgba(0, ${255 * intensity}, 255, ${intensity})`;
+                
+                ctx.fillStyle = color;
+                ctx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
+            });
+            
+            // Draw grid overlay
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x < canvas.width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y < canvas.height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+    </script>
+</body>
+</html>
+

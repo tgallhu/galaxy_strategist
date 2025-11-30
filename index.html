@@ -4,10 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Galactic Strategist</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="stylesheet" href="style.css">
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js"></script>
 </head>
 <body>
     <div style="text-align: center; padding: 10px; background-color: rgba(0,0,0,0.8); border-bottom: 2px solid #00FFFF;">
@@ -25,9 +27,12 @@
     <script src="firebase-config.js?v=3"></script>
     <script src="scores.js?v=3"></script>
     <script src="difficulty.js?v=3"></script>
-    
+    <script src="telemetry.js?v=2"></script>
+    <script src="notifications.js?v=1"></script>
+    <script src="tutorial.js?v=1"></script>
+
     <!-- Game Script -->
-    <script src="game.js?v=12"></script>
+    <script src="game.js?v=13"></script>
     
     <!-- Auth Check -->
     <script>
@@ -39,9 +44,21 @@
         } else {
             // Initialize Firebase
             initFirestore();
-            
+
             // Make user info available to game
             window.currentUser = currentUser;
+
+            // Send welcome notification for first-time users
+            if (currentUser.needsWelcomeNotification) {
+                // Wait for notifications.js to load and initialize
+                window.addEventListener('load', () => {
+                    setTimeout(() => {
+                        if (typeof sendWelcomeNotification !== 'undefined') {
+                            sendWelcomeNotification(currentUser.name);
+                        }
+                    }, 2000); // Wait 2 seconds for everything to initialize
+                });
+            }
         }
     </script>
 </body>

@@ -90,6 +90,16 @@ async function saveScore(name, email, score, level, timeSeconds, ammoUsed) {
         console.log('💾 Saving score to Firestore:', scoreData);
         const docRef = await db.collection('scores').add(scoreData);
         console.log('✅ Score saved with document ID:', docRef.id);
+
+        // Broadcast score notification to all users
+        if (typeof broadcastScoreNotification !== 'undefined') {
+            try {
+                await broadcastScoreNotification(name, score, level);
+            } catch (notifError) {
+                console.warn('⚠️ Could not send score notification:', notifError);
+            }
+        }
+
         return { success: true, docId: docRef.id };
     } catch (error) {
         console.error('❌ Error saving score:', error);

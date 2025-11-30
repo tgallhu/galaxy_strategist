@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tutorial Improvements Report - Galactic Strategist</title>
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 100%);
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .header {
+            text-align: center;
+            padding: 20px;
+            border-bottom: 3px solid #00FFFF;
+            margin-bottom: 30px;
+            background: rgba(0, 0, 0, 0.6);
+        }
+        
+        .header h1 {
+            color: #00FFFF;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        .nav-links {
+            margin-top: 15px;
+        }
+        
+        .nav-links a {
+            color: #00FFFF;
+            text-decoration: none;
+            margin: 0 15px;
+            padding: 8px 15px;
+            border: 1px solid #00FFFF;
+            transition: all 0.3s;
+        }
+        
+        .nav-links a:hover {
+            background: #00FFFF;
+            color: #000;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .section {
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid #00FFFF;
+            padding: 25px;
+            margin-bottom: 30px;
+            border-radius: 8px;
+        }
+        
+        .section h2 {
+            color: #00FFFF;
+            margin-bottom: 20px;
+            font-size: 24px;
+            border-bottom: 2px solid #00FFFF;
+            padding-bottom: 10px;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-bottom: 20px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .stat-card {
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid #00FFFF;
+            padding: 15px;
+            text-align: center;
+        }
+        
+        .stat-card .value {
+            font-size: 32px;
+            color: #00FFFF;
+            font-weight: bold;
+        }
+        
+        .stat-card .label {
+            font-size: 14px;
+            color: #aaa;
+            margin-top: 5px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        table th, table td {
+            padding: 12px;
+            text-align: left;
+            border: 1px solid #00FFFF;
+        }
+        
+        table th {
+            background: rgba(0, 255, 255, 0.2);
+            color: #00FFFF;
+        }
+        
+        table tr:nth-child(even) {
+            background: rgba(0, 255, 255, 0.05);
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #00FFFF;
+            font-size: 18px;
+        }
+        
+        .error {
+            background: rgba(255, 0, 0, 0.2);
+            border: 2px solid #ff0000;
+            color: #ff6666;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        
+        .insights {
+            background: rgba(255, 165, 0, 0.1);
+            border: 2px solid #ffa500;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        
+        .insights h3 {
+            color: #ffa500;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📚 Tutorial Improvements Report</h1>
+        <p>Identify what new players struggle with and improve onboarding</p>
+        <div class="nav-links">
+            <a href="dashboard-difficulty.html">Difficulty</a>
+            <a href="dashboard-tutorial.html">Tutorial</a>
+            <a href="dashboard-leaderboard.html">Leaderboard</a>
+            <a href="../index.html">← Back to Game</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- New Player Behaviors -->
+        <div class="section">
+            <h2>🎮 New Player Behaviors (First 5 Games)</h2>
+            <div id="newPlayerLoading" class="loading">Loading...</div>
+            <div id="newPlayerError" class="error" style="display: none;"></div>
+            <div class="stats-grid" id="newPlayerStats" style="display: none;"></div>
+        </div>
+
+        <!-- Accuracy Patterns -->
+        <div class="section">
+            <h2>🎯 Low Accuracy Patterns</h2>
+            <div id="accuracyLoading" class="loading">Loading...</div>
+            <div id="accuracyError" class="error" style="display: none;"></div>
+            <div id="accuracyContent" style="display: none;">
+                <div class="chart-container">
+                    <canvas id="accuracyChart"></canvas>
+                </div>
+                <div class="insights" id="accuracyInsights"></div>
+            </div>
+        </div>
+
+        <!-- Movement Inefficiency -->
+        <div class="section">
+            <h2>🚶 Movement Inefficiency</h2>
+            <div id="movementLoading" class="loading">Loading...</div>
+            <div id="movementError" class="error" style="display: none;"></div>
+            <div id="movementContent" style="display: none;">
+                <table id="movementTable"></table>
+            </div>
+        </div>
+
+        <!-- Unused Mechanics -->
+        <div class="section">
+            <h2>⚙️ Unused Mechanics</h2>
+            <div id="mechanicsLoading" class="loading">Loading...</div>
+            <div id="mechanicsError" class="error" style="display: none;"></div>
+            <div id="mechanicsContent" style="display: none;">
+                <div class="chart-container">
+                    <canvas id="mechanicsChart"></canvas>
+                </div>
+                <div class="stats-grid" id="mechanicsStats"></div>
+            </div>
+        </div>
+
+        <!-- Heat Overload Stats -->
+        <div class="section">
+            <h2>🔥 Heat Management Failures</h2>
+            <div id="heatLoading" class="loading">Loading...</div>
+            <div id="heatError" class="error" style="display: none;"></div>
+            <div class="chart-container" style="display: none;" id="heatChartContainer">
+                <canvas id="heatChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Learning Curve -->
+        <div class="section">
+            <h2>📈 Learning Curve Analysis</h2>
+            <div id="learningLoading" class="loading">Loading...</div>
+            <div id="learningError" class="error" style="display: none;"></div>
+            <div class="chart-container" style="display: none;" id="learningChartContainer">
+                <canvas id="learningChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script src="../firebase-config.js"></script>
+    <script src="../whitelist.js"></script>
+    <script src="../auth.js"></script>
+    <script src="../admin-whitelist.js"></script>
+    <script src="../scores.js"></script>
+    <script src="../dashboard-api.js"></script>
+    <script>
+        // Chart colors (global scope)
+        const chartColors = {
+            primary: 'rgba(0, 255, 255, 0.8)',
+            secondary: 'rgba(255, 165, 0, 0.8)',
+            success: 'rgba(0, 255, 0, 0.8)',
+            danger: 'rgba(255, 0, 0, 0.8)'
+        };
+
+        // Check admin access
+        if (!getCurrentUser() || !isAdminEmail(getCurrentUser().email)) {
+            document.body.innerHTML = `
+                <div style="text-align: center; padding: 50px; color: #ff0000; font-family: 'Courier New', monospace; background: #000;">
+                    <h1>❌ Access Denied</h1>
+                    <p>You do not have permission to access this dashboard.</p>
+                    <p>Only administrators can view telemetry data.</p>
+                    <a href="../index.html" style="color: #00FFFF; margin-top: 20px; display: inline-block;">← Back to Game</a>
+                </div>
+            `;
+        } else {
+            initFirestore();
+
+            window.addEventListener('DOMContentLoaded', async () => {
+                await loadNewPlayerBehaviors();
+                await loadAccuracyPatterns();
+                await loadMovementInefficiency();
+                await loadUnusedMechanics();
+                await loadHeatOverload();
+                await loadLearningCurve();
+            });
+        }
+
+        async function loadNewPlayerBehaviors() {
+            const result = await DashboardAPI.getNewPlayerBehaviors();
+            
+            document.getElementById('newPlayerLoading').style.display = 'none';
+            
+            if (!result.success) {
+                document.getElementById('newPlayerError').textContent = result.error || 'Failed to load data';
+                document.getElementById('newPlayerError').style.display = 'block';
+                return;
+            }
+
+            const data = result.data;
+            document.getElementById('newPlayerStats').style.display = 'grid';
+            document.getElementById('newPlayerStats').innerHTML = `
+                <div class="stat-card">
+                    <div class="value">${data.players}</div>
+                    <div class="label">New Players</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">${data.totalGames}</div>
+                    <div class="label">Total Games</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">${data.averageAccuracy}%</div>
+                    <div class="label">Avg Accuracy</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">${data.grenadeUsage}%</div>
+                    <div class="label">Grenade Usage</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">${data.shieldUsage}%</div>
+                    <div class="label">Shield Usage</div>
+                </div>
+            `;
+        }
+
+        async function loadAccuracyPatterns() {
+            const result = await DashboardAPI.getLowAccuracyPlayers();
+            
+            document.getElementById('accuracyLoading').style.display = 'none';
+            
+            if (!result.success) {
+                document.getElementById('accuracyError').textContent = result.error || 'Failed to load data';
+                document.getElementById('accuracyError').style.display = 'block';
+                return;
+            }
+
+            const data = result.data;
+            document.getElementById('accuracyContent').style.display = 'block';
+            
+            // Chart
+            new Chart(document.getElementById('accuracyChart'), {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(data.distribution),
+                    datasets: [{
+                        label: 'Number of Players',
+                        data: Object.values(data.distribution),
+                        backgroundColor: [
+                            chartColors.danger,
+                            chartColors.secondary,
+                            chartColors.primary,
+                            chartColors.success,
+                            chartColors.success
+                        ],
+                        borderColor: chartColors.primary,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        },
+                        x: {
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#fff' } }
+                    }
+                }
+            });
+
+            // Insights
+            const percentage = ((data.lowAccuracyCount / data.players.length) * 100).toFixed(1);
+            document.getElementById('accuracyInsights').innerHTML = `
+                <h3>📊 Insights</h3>
+                <p><strong>${data.lowAccuracyCount}</strong> players have accuracy < 20% (${percentage}% of all players)</p>
+                <p>This suggests aiming difficulty - consider adding aim assist or improved targeting tutorial.</p>
+            `;
+        }
+
+        async function loadMovementInefficiency() {
+            const result = await DashboardAPI.getMovementInefficiency();
+            
+            document.getElementById('movementLoading').style.display = 'none';
+            
+            if (!result.success || !result.data || result.data.length === 0) {
+                document.getElementById('movementError').textContent = result.error || 'No movement data available';
+                document.getElementById('movementError').style.display = 'block';
+                return;
+            }
+
+            document.getElementById('movementContent').style.display = 'block';
+            
+            let tableHTML = '<thead><tr><th>Player</th><th>Efficiency Ratio</th><th>Distance Traveled</th><th>Optimal Distance</th><th>Left/Right Ratio</th></tr></thead><tbody>';
+            result.data.slice(0, 20).forEach(player => {
+                tableHTML += `<tr>
+                    <td>${player.email.substring(0, 20)}...</td>
+                    <td>${player.efficiency}x</td>
+                    <td>${player.totalDistance}px</td>
+                    <td>${player.optimalDistance}px</td>
+                    <td>${player.leftRightRatio}</td>
+                </tr>`;
+            });
+            tableHTML += '</tbody>';
+            document.getElementById('movementTable').innerHTML = tableHTML;
+        }
+
+        async function loadUnusedMechanics() {
+            const result = await DashboardAPI.getUnusedMechanics();
+            
+            document.getElementById('mechanicsLoading').style.display = 'none';
+            
+            if (!result.success) {
+                document.getElementById('mechanicsError').textContent = result.error || 'Failed to load data';
+                document.getElementById('mechanicsError').style.display = 'block';
+                return;
+            }
+
+            const data = result.data;
+            document.getElementById('mechanicsContent').style.display = 'block';
+            
+            // Chart
+            new Chart(document.getElementById('mechanicsChart'), {
+                type: 'pie',
+                data: {
+                    labels: ['Grenade Non-Users', 'Grenade Users', 'Shield Non-Users', 'Shield Users'],
+                    datasets: [{
+                        data: [
+                            data.grenadeNonUsers,
+                            data.total - data.grenadeNonUsers,
+                            data.shieldNonUsers,
+                            data.total - data.shieldNonUsers
+                        ],
+                        backgroundColor: [
+                            chartColors.danger,
+                            chartColors.success,
+                            chartColors.secondary,
+                            chartColors.primary
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: '#fff' } }
+                    }
+                }
+            });
+
+            // Stats
+            document.getElementById('mechanicsStats').innerHTML = `
+                <div class="stat-card">
+                    <div class="value">${data.grenadeNonUsagePercentage}%</div>
+                    <div class="label">Never Use Grenades</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">${data.shieldNonUsagePercentage}%</div>
+                    <div class="label">Never Use Shields</div>
+                </div>
+            `;
+        }
+
+        async function loadHeatOverload() {
+            const result = await DashboardAPI.getHeatOverloadStats();
+            
+            document.getElementById('heatLoading').style.display = 'none';
+            
+            if (!result.success) {
+                document.getElementById('heatError').textContent = result.error || 'Failed to load data';
+                document.getElementById('heatError').style.display = 'block';
+                return;
+            }
+
+            const data = result.data;
+            document.getElementById('heatChartContainer').style.display = 'block';
+            
+            new Chart(document.getElementById('heatChart'), {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(data.distribution),
+                    datasets: [{
+                        label: 'Number of Games',
+                        data: Object.values(data.distribution),
+                        backgroundColor: chartColors.danger,
+                        borderColor: chartColors.primary,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        },
+                        x: {
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#fff' } }
+                    }
+                }
+            });
+        }
+
+        async function loadLearningCurve() {
+            const result = await DashboardAPI.getLearningCurve();
+            
+            document.getElementById('learningLoading').style.display = 'none';
+            
+            if (!result.success) {
+                document.getElementById('learningError').textContent = result.error || 'Failed to load data';
+                document.getElementById('learningError').style.display = 'block';
+                return;
+            }
+
+            const data = result.data;
+            document.getElementById('learningChartContainer').style.display = 'block';
+            
+            new Chart(document.getElementById('learningChart'), {
+                type: 'line',
+                data: {
+                    labels: ['Game 1', 'Game 2', 'Game 3', 'Game 4', 'Game 5'],
+                    datasets: [
+                        {
+                            label: 'Accuracy (%)',
+                            data: [
+                                parseFloat(data.game1.accuracy || 0),
+                                parseFloat(data.game2.accuracy || 0),
+                                parseFloat(data.game3.accuracy || 0),
+                                parseFloat(data.game4.accuracy || 0),
+                                parseFloat(data.game5.accuracy || 0)
+                            ],
+                            borderColor: chartColors.primary,
+                            backgroundColor: 'rgba(0, 255, 255, 0.1)',
+                            yAxisID: 'y',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Score',
+                            data: [
+                                parseFloat(data.game1.score || 0),
+                                parseFloat(data.game2.score || 0),
+                                parseFloat(data.game3.score || 0),
+                                parseFloat(data.game4.score || 0),
+                                parseFloat(data.game5.score || 0)
+                            ],
+                            borderColor: chartColors.success,
+                            backgroundColor: 'rgba(0, 255, 0, 0.1)',
+                            yAxisID: 'y1',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            ticks: { color: '#fff' },
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                        },
+                        x: {
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#fff' } }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
+

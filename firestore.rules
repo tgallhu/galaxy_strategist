@@ -1,0 +1,42 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow read/write access to scores collection
+    // TODO: Implement Firebase Auth and restrict based on authenticated users
+    match /scores/{document=**} {
+      allow read: if true;
+      allow write: if true;  // Allow all writes (change this when Firebase Auth is implemented)
+    }
+    
+    // Allow read/write access to users collection (for difficulty profiles)
+    // TODO: Implement Firebase Auth and restrict based on authenticated users
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if true;  // Allow all writes (change this when Firebase Auth is implemented)
+    }
+    
+    // Telemetry collection - players can write their own, admins can read all
+    // TODO: Implement Firebase Auth and restrict based on authenticated users
+    match /telemetry/{telemetryId} {
+      // Allow all writes (application-level validation via whitelist)
+      allow write: if true;
+      // Allow all reads (admin check done in dashboard application logic)
+      allow read: if true;
+    }
+
+    // Notifications collection - allow all to read and write
+    // TODO: Implement proper Firebase Auth and restrict based on user
+    match /notifications/{notificationId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // FCM tokens collection - allow all to read and write their own token
+    // TODO: Implement proper Firebase Auth and restrict based on user
+    match /fcm_tokens/{tokenId} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}
+

@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leaderboard Insights - Galactic Strategist</title>
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-radar@2.0.0/dist/chartjs-plugin-radar.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 100%);
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .header {
+            text-align: center;
+            padding: 20px;
+            border-bottom: 3px solid #00FFFF;
+            margin-bottom: 30px;
+            background: rgba(0, 0, 0, 0.6);
+        }
+        
+        .header h1 {
+            color: #00FFFF;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        .nav-links {
+            margin-top: 15px;
+        }
+        
+        .nav-links a {
+            color: #00FFFF;
+            text-decoration: none;
+            margin: 0 15px;
+            padding: 8px 15px;
+            border: 1px solid #00FFFF;
+            transition: all 0.3s;
+        }
+        
+        .nav-links a:hover {
+            background: #00FFFF;
+            color: #000;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .section {
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid #00FFFF;
+            padding: 25px;
+            margin-bottom: 30px;
+            border-radius: 8px;
+        }
+        
+        .section h2 {
+            color: #00FFFF;
+            margin-bottom: 20px;
+            font-size: 24px;
+            border-bottom: 2px solid #00FFFF;
+            padding-bottom: 10px;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-bottom: 20px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        table th, table td {
+            padding: 12px;
+            text-align: left;
+            border: 1px solid #00FFFF;
+        }
+        
+        table th {
+            background: rgba(0, 255, 255, 0.2);
+            color: #00FFFF;
+        }
+        
+        table tr:nth-child(even) {
+            background: rgba(0, 255, 255, 0.05);
+        }
+        
+        .comparison-table {
+            width: 100%;
+            margin-top: 20px;
+        }
+        
+        .comparison-table th {
+            background: rgba(0, 255, 255, 0.2);
+            color: #00FFFF;
+            padding: 15px;
+        }
+        
+        .comparison-table td {
+            padding: 15px;
+            border: 1px solid #00FFFF;
+        }
+        
+        .top10 {
+            color: #00FF00;
+            font-weight: bold;
+        }
+        
+        .average {
+            color: #FFA500;
+        }
+        
+        .difference {
+            color: #00FFFF;
+            font-weight: bold;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #00FFFF;
+            font-size: 18px;
+        }
+        
+        .error {
+            background: rgba(255, 0, 0, 0.2);
+            border: 2px solid #ff0000;
+            color: #ff6666;
+            padding: 15px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏆 Leaderboard Insights</h1>
+        <p>What top players do differently from average players</p>
+        <div class="nav-links">
+            <a href="dashboard-difficulty.html">Difficulty</a>
+            <a href="dashboard-tutorial.html">Tutorial</a>
+            <a href="dashboard-leaderboard.html">Leaderboard</a>
+            <a href="../index.html">← Back to Game</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Top 10% vs Average Comparison -->
+        <div class="section">
+            <h2>📊 Top 10% vs Average Players Comparison</h2>
+            <div id="comparisonLoading" class="loading">Loading...</div>
+            <div id="comparisonError" class="error" style="display: none;"></div>
+            <div id="comparisonContent" style="display: none;">
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Metric</th>
+                            <th>Top 10%</th>
+                            <th>Average</th>
+                            <th>Difference</th>
+                        </tr>
+                    </thead>
+                    <tbody id="comparisonTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Radar Chart -->
+        <div class="section">
+            <h2>🎯 Multi-Dimensional Comparison</h2>
+            <div id="radarLoading" class="loading">Loading...</div>
+            <div id="radarError" class="error" style="display: none;"></div>
+            <div class="chart-container" style="display: none;" id="radarChartContainer">
+                <canvas id="radarChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Accuracy vs Score Correlation -->
+        <div class="section">
+            <h2>📈 Accuracy vs Score Correlation</h2>
+            <div id="correlationLoading" class="loading">Loading...</div>
+            <div id="correlationError" class="error" style="display: none;"></div>
+            <div class="chart-container" style="display: none;" id="correlationChartContainer">
+                <canvas id="correlationChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script src="../firebase-config.js"></script>
+    <script src="../whitelist.js"></script>
+    <script src="../auth.js"></script>
+    <script src="../admin-whitelist.js"></script>
+    <script src="../scores.js"></script>
+    <script src="../dashboard-api.js"></script>
+    <script>
+        // Check admin access
+        if (!getCurrentUser() || !isAdminEmail(getCurrentUser().email)) {
+            document.body.innerHTML = `
+                <div style="text-align: center; padding: 50px; color: #ff0000; font-family: 'Courier New', monospace; background: #000;">
+                    <h1>❌ Access Denied</h1>
+                    <p>You do not have permission to access this dashboard.</p>
+                    <p>Only administrators can view telemetry data.</p>
+                    <a href="../index.html" style="color: #00FFFF; margin-top: 20px; display: inline-block;">← Back to Game</a>
+                </div>
+            `;
+        } else {
+            initFirestore();
+
+            window.addEventListener('DOMContentLoaded', async () => {
+                await loadComparison();
+                await loadRadarChart();
+                await loadCorrelation();
+            });
+        }
+
+        // Chart colors (global scope)
+        const chartColors = {
+            primary: 'rgba(0, 255, 255, 0.8)',
+            secondary: 'rgba(255, 165, 0, 0.8)',
+            success: 'rgba(0, 255, 0, 0.8)',
+            danger: 'rgba(255, 0, 0, 0.8)'
+        };
+
+        async function loadComparison() {
+            const result = await DashboardAPI.getTop10PercentComparison();
+            
+            document.getElementById('comparisonLoading').style.display = 'none';
+            
+            if (!result.success) {
+                document.getElementById('comparisonError').textContent = result.error || 'Failed to load data';
+                document.getElementById('comparisonError').style.display = 'block';
+                return;
+            }
+
+            const top10 = result.data.top10;
+            const average = result.data.average;
+            
+            document.getElementById('comparisonContent').style.display = 'block';
+            
+            const metrics = [
+                { name: 'Accuracy (%)', top10: top10.accuracy, avg: average.accuracy },
+                { name: 'Average Speed (px/s)', top10: top10.speed, avg: average.speed },
+                { name: 'Shot Interval (s)', top10: top10.shotInterval, avg: average.shotInterval },
+                { name: 'Kills per Grenade', top10: top10.killsPerGrenade, avg: average.killsPerGrenade },
+                { name: 'Shield Uptime (%)', top10: top10.shieldUptime, avg: average.shieldUptime },
+                { name: 'Survival Time (s)', top10: top10.survivalTime, avg: average.survivalTime }
+            ];
+
+            let tableHTML = '';
+            metrics.forEach(metric => {
+                const diff = (parseFloat(metric.top10) - parseFloat(metric.avg)).toFixed(2);
+                const diffPercent = parseFloat(metric.avg) > 0 
+                    ? ((diff / parseFloat(metric.avg)) * 100).toFixed(1) 
+                    : 0;
+                const diffSign = diff >= 0 ? '+' : '';
+                
+                tableHTML += `<tr>
+                    <td>${metric.name}</td>
+                    <td class="top10">${metric.top10}</td>
+                    <td class="average">${metric.avg}</td>
+                    <td class="difference">${diffSign}${diff} (${diffSign}${diffPercent}%)</td>
+                </tr>`;
+            });
+            
+            document.getElementById('comparisonTableBody').innerHTML = tableHTML;
+        }
+
+        async function loadRadarChart() {
+            const result = await DashboardAPI.getTop10PercentComparison();
+            
+            document.getElementById('radarLoading').style.display = 'none';
+            
+            if (!result.success) {
+                document.getElementById('radarError').textContent = result.error || 'Failed to load data';
+                document.getElementById('radarError').style.display = 'block';
+                return;
+            }
+
+            const top10 = result.data.top10;
+            const average = result.data.average;
+            
+            document.getElementById('radarChartContainer').style.display = 'block';
+            
+            // Normalize values to 0-100 scale for radar chart
+            const normalize = (value, max) => max > 0 ? (value / max) * 100 : 0;
+            
+            const maxValues = {
+                accuracy: Math.max(top10.accuracy, average.accuracy),
+                speed: Math.max(top10.speed, average.speed),
+                shotInterval: Math.max(top10.shotInterval, average.shotInterval),
+                killsPerGrenade: Math.max(top10.killsPerGrenade, average.killsPerGrenade),
+                shieldUptime: Math.max(top10.shieldUptime, average.shieldUptime),
+                survivalTime: Math.max(top10.survivalTime, average.survivalTime)
+            };
+            
+            new Chart(document.getElementById('radarChart'), {
+                type: 'radar',
+                data: {
+                    labels: ['Accuracy', 'Speed', 'Shot Frequency', 'Grenade Efficiency', 'Shield Uptime', 'Survival'],
+                    datasets: [
+                        {
+                            label: 'Top 10%',
+                            data: [
+                                normalize(parseFloat(top10.accuracy), maxValues.accuracy),
+                                normalize(parseFloat(top10.speed), maxValues.speed),
+                                normalize(parseFloat(top10.shotInterval), maxValues.shotInterval),
+                                normalize(parseFloat(top10.killsPerGrenade), maxValues.killsPerGrenade),
+                                normalize(parseFloat(top10.shieldUptime), maxValues.shieldUptime),
+                                normalize(parseFloat(top10.survivalTime), maxValues.survivalTime)
+                            ],
+                            borderColor: chartColors.primary,
+                            backgroundColor: 'rgba(0, 255, 255, 0.2)',
+                            pointBackgroundColor: chartColors.primary,
+                            pointBorderColor: '#fff',
+                            pointHoverBackgroundColor: '#fff',
+                            pointHoverBorderColor: chartColors.primary
+                        },
+                        {
+                            label: 'Average',
+                            data: [
+                                normalize(parseFloat(average.accuracy), maxValues.accuracy),
+                                normalize(parseFloat(average.speed), maxValues.speed),
+                                normalize(parseFloat(average.shotInterval), maxValues.shotInterval),
+                                normalize(parseFloat(average.killsPerGrenade), maxValues.killsPerGrenade),
+                                normalize(parseFloat(average.shieldUptime), maxValues.shieldUptime),
+                                normalize(parseFloat(average.survivalTime), maxValues.survivalTime)
+                            ],
+                            borderColor: chartColors.secondary,
+                            backgroundColor: 'rgba(255, 165, 0, 0.2)',
+                            pointBackgroundColor: chartColors.secondary,
+                            pointBorderColor: '#fff',
+                            pointHoverBackgroundColor: '#fff',
+                            pointHoverBorderColor: chartColors.secondary
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: { color: '#fff', stepSize: 20 },
+                            grid: { color: 'rgba(255,255,255,0.1)' },
+                            pointLabels: { color: '#fff' }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#fff' } }
+                    }
+                }
+            });
+        }
+
+        async function loadCorrelation() {
+            const result = await DashboardAPI.getAccuracyScoreCorrelation();
+            
+            document.getElementById('correlationLoading').style.display = 'none';
+            
+            if (!result.success) {
+                document.getElementById('correlationError').innerHTML = `
+                    <strong>Error:</strong> ${result.error || 'Failed to load correlation data'}<br>
+                    <small>Check browser console for details. Make sure telemetry records exist with both accuracy > 0% and score > 0.</small>
+                `;
+                document.getElementById('correlationError').style.display = 'block';
+                return;
+            }
+            
+            if (!result.data || result.data.length === 0) {
+                document.getElementById('correlationError').innerHTML = `
+                    <strong>No correlation data available</strong><br>
+                    <small>
+                        Need telemetry records with both accuracy > 0% and score > 0.<br>
+                        This could mean:<br>
+                        • No games have been played yet<br>
+                        • Players died before shooting (accuracy = 0)<br>
+                        • Games ended with score = 0<br>
+                        Check browser console for detailed statistics.
+                    </small>
+                `;
+                document.getElementById('correlationError').style.display = 'block';
+                return;
+            }
+
+            document.getElementById('correlationChartContainer').style.display = 'block';
+            
+            // Sample data if too many points (for performance)
+            const data = result.data.length > 500 
+                ? result.data.filter((_, i) => i % Math.ceil(result.data.length / 500) === 0)
+                : result.data;
+            
+            new Chart(document.getElementById('correlationChart'), {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: 'Players',
+                        data: data.map(d => ({ x: d.accuracy, y: d.score })),
+                        backgroundColor: 'rgba(0, 255, 255, 0.5)',
+                        borderColor: chartColors.primary,
+                        pointRadius: 3,
+                        pointHoverRadius: 5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Accuracy (%)',
+                                color: '#fff'
+                            },
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Final Score',
+                                color: '#fff'
+                            },
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#fff' } },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => {
+                                    return `Accuracy: ${context.parsed.x.toFixed(1)}%, Score: ${context.parsed.y.toLocaleString()}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
+

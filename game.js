@@ -415,6 +415,7 @@ let player = {
     maxLives: 3,
     ammoBoostActive: false,
     ammoBoostShots: 0,
+    ammoBoostCollectedTime: 0, // Track when ammo boost was collected for flash message
     grenades: 1,
     maxGrenades: 3,
     shieldHitTime: 0  // Track when shield was last hit for flash effect
@@ -699,10 +700,10 @@ function drawBackground() {
         ctx.globalAlpha = 1.0;
     }
 
-    // Intensity spike screen flash
+    // Intensity spike screen flash (purple/deep lilac)
     if (intensitySpikeActive) {
         const flashAlpha = Math.abs(Math.sin(Date.now() / 100)) * 0.15 + 0.1;
-        ctx.fillStyle = '#FF0000';
+        ctx.fillStyle = '#BF00FF'; // Purple/deep lilac
         ctx.globalAlpha = flashAlpha;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.globalAlpha = 1.0;
@@ -824,6 +825,87 @@ function drawPlayer() {
             ctx.stroke();
         }
     }
+    
+    // Display flash message when non-heating ammo is collected (show for 3 seconds) - HIGH PRIORITY
+    const now = Date.now();
+    let showAmmoMessage = false;
+    
+    // Check if non-heating ammo was recently collected
+    if (player.ammoBoostCollectedTime > 0) {
+        const timeSinceCollected = now - player.ammoBoostCollectedTime;
+        const flashDuration = 3000; // 3 seconds
+        
+        if (timeSinceCollected >= 0 && timeSinceCollected < flashDuration) {
+            showAmmoMessage = true;
+            const textX = player.x + player.width / 2;
+            const textY = Math.max(UI_HEIGHT + 10, player.y - 35); // Ensure it's visible, above player or at least below UI
+            
+            // Determine which message to show (cycle through encouraging messages)
+            let message = '';
+            const messageIndex = Math.floor(timeSinceCollected / 600); // Change message every 600ms
+            const messages = ['NON-HEATING AMMO!', "LET'S GO!", 'PUSH!'];
+            message = messages[messageIndex % messages.length];
+            
+            // Calculate alpha for fade in/out
+            let alpha = 1.0;
+            if (timeSinceCollected < 300) {
+                // Fade in
+                alpha = Math.max(0.3, timeSinceCollected / 300); // Start at 30% minimum
+            } else if (timeSinceCollected > flashDuration - 500) {
+                // Fade out in last 500ms
+                alpha = Math.max(0.1, (flashDuration - timeSinceCollected) / 500);
+            }
+            
+            // Strong pulsing intensity for visibility
+            const pulseIntensity = Math.abs(Math.sin(now / 60)) * 0.4 + 0.6; // Stronger, faster pulse
+            
+            // Draw background for better visibility (larger)
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
+            ctx.fillRect(textX - 140, textY - 20, 280, 32);
+            
+            // Draw border (ice blue)
+            ctx.strokeStyle = 'rgba(0, 206, 209, 1.0)';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(textX - 140, textY - 20, 280, 32);
+            
+            // Draw ice blue text with pulsing/flashing effect
+            const iceBlueR = 0;
+            const iceBlueG = 206;
+            const iceBlueB = 209;
+            
+            // Text with strong glow shadow
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = `rgba(0, 206, 209, ${alpha * 1.0})`;
+            ctx.fillStyle = `rgba(${iceBlueR}, ${iceBlueG}, ${iceBlueB}, ${pulseIntensity * alpha})`;
+            ctx.font = 'bold 22px "Courier New"';
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(message, textX, textY);
+            
+            // Reset shadow
+            ctx.shadowBlur = 0;
+        } else if (timeSinceCollected >= flashDuration) {
+            // Reset timer after flash duration
+            player.ammoBoostCollectedTime = 0;
+        }
+    }
+    
+    // Display "WEAPON OVERHEATING" warning above player ship (lower priority, only if ammo message not showing)
+    if (player.weaponLockoutActive && !showAmmoMessage) {
+        const textX = player.x + player.width / 2;
+        const textY = player.y - 20;
+        
+        // Draw background for better visibility
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(textX - 90, textY - 12, 180, 16);
+        
+        // Draw red text with pulsing effect
+        const pulseIntensity = Math.abs(Math.sin(now / 100)) * 0.5 + 0.5;
+        ctx.fillStyle = `rgba(255, 0, 0, ${pulseIntensity})`;
+        ctx.font = 'bold 14px "Courier New"';
+        ctx.textAlign = "center";
+        ctx.fillText('WEAPON OVERHEATING', textX, textY);
+    }
 }
 
 function drawEnemies() {
@@ -892,7 +974,7 @@ function drawEnemies() {
 
         } else if (currentLevel === 1) {
             // LEVEL 1 ENEMIES - Simple alien creatures
-            const bodyColor = intensitySpikeActive ? '#FF0000' : '#00CC00';
+            const bodyColor = intensitySpikeActive ? '#BF00FF' : '#00CC00'; // Purple during intensity spike
 
             // Main body (rounded rectangle)
             ctx.fillStyle = bodyColor;
@@ -928,7 +1010,7 @@ function drawEnemies() {
 
         } else {
             // LEVEL 2+ ENEMIES - 3 different variants (detailed, animated)
-            let color = intensitySpikeActive ? '#FF0000' : '#00FF00';
+            let color = intensitySpikeActive ? '#BF00FF' : '#00FF00'; // Purple during intensity spike
 
             // Determine enemy variant based on position
             const variant = Math.floor((enemy.x + enemy.y) / 100) % 3;
@@ -1143,13 +1225,13 @@ function drawPowerups() {
             ctx.lineWidth = 2;
             ctx.strokeRect(powerup.x, powerup.y, POWERUP_SIZE, POWERUP_SIZE);
         } else if (powerup.type === 'ammo') {
-            // Draw ammo powerup (yellow bullet/magazine)
-            ctx.fillStyle = '#FFFF00'; // Yellow color
+            // Draw ammo powerup (ice blue bullet/magazine - non-heating ammo)
+            ctx.fillStyle = '#00CED1'; // Ice blue color
             // Magazine body
             ctx.fillRect(powerup.x + 4, powerup.y + 6, POWERUP_SIZE - 8, POWERUP_SIZE - 10);
 
             // Bullets sticking out
-            ctx.fillStyle = '#FFA500'; // Orange bullet tips
+            ctx.fillStyle = '#00E5FF'; // Light ice blue bullet tips
             ctx.fillRect(powerup.x + 6, powerup.y + 3, 3, 4);
             ctx.fillRect(powerup.x + 11, powerup.y + 3, 3, 4);
 
@@ -1368,8 +1450,8 @@ function drawHeatBar() {
         ctx.fillStyle = '#FF0000';
         ctx.fillText('WEAPON JAMMED!', startX + barWidth / 2, startY + 14);
     } else if (player.ammoBoostActive) {
-        ctx.fillStyle = '#FFFF00';
-        ctx.fillText(`⚡ BOOST: ${player.ammoBoostShots} shots ⚡`, startX + barWidth / 2, startY + 14);
+        ctx.fillStyle = '#00CED1'; // Ice blue to match non-heating ammo icon
+        ctx.fillText(`❄ NON-HEATING AMMO: ${player.ammoBoostShots} shots ❄`, startX + barWidth / 2, startY + 14);
     } else if (heatPercent > 0.7) {
         ctx.fillStyle = '#FFFF00';
         ctx.fillText('⚠ DANGER ZONE ⚠', startX + barWidth / 2, startY + 14);
@@ -1693,9 +1775,62 @@ function drawHelpPanel() {
     yPos += 5;
     drawHelpItem('AMMO/HEAT', 'Firing increases heat. Wait for cooldown or face lockout!', '⚡');
     
-    // Powerups
-    yPos += 5;
-    drawHelpItem('POWERUPS', 'Pick up: ❤=Life, 🛡=Shield, ⚡=Ammo, 💣=Grenade', '✨');
+    // Powerups - Visual icons section
+    yPos += 15;
+    ctx.fillStyle = '#00FF00';
+    ctx.font = 'bold 14px "Courier New"';
+    ctx.fillText('AVAILABLE ICONS:', panelX + 10, yPos);
+    yPos += 25;
+    
+    // Health icon
+    const iconSize = 20;
+    const iconX = panelX + 10;
+    let iconY = yPos;
+    
+    // Health powerup icon (red cross)
+    ctx.fillStyle = '#FF0066';
+    ctx.fillRect(iconX + iconSize/2 - 4, iconY, 8, iconSize);
+    ctx.fillRect(iconX, iconY + iconSize/2 - 4, iconSize, 8);
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(iconX - 2, iconY - 2, iconSize + 4, iconSize + 4);
+    
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '11px "Courier New"';
+    ctx.fillText('Health Powerup - Restores 1 life', iconX + iconSize + 10, iconY + 14);
+    
+    iconY += 35;
+    
+    // Regular ammo icon (yellow bullet)
+    ctx.fillStyle = '#FFFF00';
+    ctx.beginPath();
+    ctx.arc(iconX + iconSize/2, iconY + iconSize/2, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(iconX - 2, iconY - 2, iconSize + 4, iconSize + 4);
+    
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '11px "Courier New"';
+    ctx.fillText('Regular Ammo - Heats up when firing', iconX + iconSize + 10, iconY + 14);
+    
+    iconY += 35;
+    
+    // Non-heating ammo icon (ice blue magazine)
+    ctx.fillStyle = '#00CED1'; // Ice blue
+    ctx.fillRect(iconX + 4, iconY + 6, iconSize - 8, iconSize - 10);
+    ctx.fillStyle = '#00E5FF'; // Light ice blue bullet tips
+    ctx.fillRect(iconX + 6, iconY + 3, 3, 4);
+    ctx.fillRect(iconX + 11, iconY + 3, 3, 4);
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(iconX - 2, iconY - 2, iconSize + 4, iconSize + 4);
+    
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '11px "Courier New"';
+    ctx.fillText('Non-Heating Ammo - Does not increase heat', iconX + iconSize + 10, iconY + 14);
+    
+    yPos = iconY + 40;
     
     // Score
     yPos += 5;
@@ -1767,6 +1902,77 @@ function drawUI() {
     drawHelpPanel(); // Draw help panel if visible
 }
 
+// Draw tutorial explanation overlay
+function drawTutorialOverlay() {
+    if (!window.tutorialSystem || !window.tutorialSystem.showExplanation) return;
+    
+    const tutorial = window.tutorialSystem;
+    const padding = 20;
+    const boxWidth = canvas.width - padding * 2;
+    const boxHeight = 140;
+    const boxX = padding;
+    const boxY = canvas.height - boxHeight - padding - 50;
+    
+    // Background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+    
+    // Border
+    ctx.strokeStyle = '#00FFFF';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+    
+    // Title
+    ctx.fillStyle = '#00FFFF';
+    ctx.font = 'bold 18px "Courier New"';
+    ctx.textAlign = "center";
+    ctx.fillText(tutorial.explanationTitle || 'Tutorial', canvas.width / 2, boxY + 25);
+    
+    // Text with word wrap
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '14px "Courier New"';
+    ctx.textAlign = "center";
+    
+    const words = (tutorial.explanationText || '').split(' ');
+    let line = '';
+    let yPos = boxY + 55;
+    const maxWidth = boxWidth - 40;
+    
+    words.forEach(word => {
+        const testLine = line + word + ' ';
+        const metrics = ctx.measureText(testLine);
+        if (metrics.width > maxWidth && line !== '') {
+            ctx.fillText(line, canvas.width / 2, yPos);
+            line = word + ' ';
+            yPos += 20;
+        } else {
+            line = testLine;
+        }
+    });
+    if (line) ctx.fillText(line, canvas.width / 2, yPos);
+    
+    // Skip hint
+    ctx.fillStyle = '#888888';
+    ctx.font = '12px "Courier New"';
+    ctx.fillText('Press SPACE to skip', canvas.width / 2, boxY + boxHeight - 15);
+    
+    // Highlight ammo powerups if needed
+    const step = tutorial.tutorialSteps[tutorial.currentStep];
+    if (step && step.highlight === 'ammo') {
+        powerups.forEach(powerup => {
+            if (powerup.type === 'ammo') {
+                const glowRadius = 35;
+                const glowAlpha = Math.abs(Math.sin(Date.now() / 200)) * 0.5 + 0.3;
+                ctx.beginPath();
+                ctx.arc(powerup.x + POWERUP_SIZE/2, powerup.y + POWERUP_SIZE/2, glowRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(0, 206, 209, ${glowAlpha})`;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            }
+        });
+    }
+}
+
 
 // --- MOVE FUNCTIONS ---
 function movePlayer() {
@@ -1775,6 +1981,11 @@ function movePlayer() {
     if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
     // Prevent player from going into UI area
     if (player.y < UI_HEIGHT) player.y = UI_HEIGHT;
+
+    // Record position telemetry (sampled at intervals)
+    if (window.telemetryRecorder) {
+        window.telemetryRecorder.recordPosition(player.x, player.y);
+    }
 }
 
 function moveBullets() {
@@ -1846,6 +2057,11 @@ function detectCollisions() {
 
             if (bullet.x > enemy.x && bullet.x < enemy.x + enemy.width &&
                 bullet.y > enemy.y && bullet.y < enemy.y + height) {
+                // Mark shot as a hit in telemetry
+                if (bullet.shotIndex !== null && bullet.shotIndex !== undefined && window.telemetryRecorder) {
+                    window.telemetryRecorder.markShotAsHit(bullet.shotIndex, enemy.type || null);
+                }
+                
                 bullets.splice(bulletIndex, 1);
 
                 // Handle sentinel shields
@@ -1859,6 +2075,15 @@ function detectCollisions() {
                     // Enemy destroyed
                     playSound('enemyDestroy');
                     totalEnemiesKilled++; // Track kills
+                    
+                    // Record enemy kill in telemetry
+                    if (window.telemetryRecorder) {
+                        window.telemetryRecorder.recordEvent('enemy_killed', {
+                            enemyType: enemy.type || 'unknown',
+                            position: { x: enemy.x, y: enemy.y },
+                            level: currentLevel
+                        });
+                    }
 
                     // Spawn powerup chance when enemy dies (level-balanced with difficulty adjustment)
                     const balance = LEVEL_BALANCE[currentLevel];
@@ -1964,6 +2189,17 @@ function detectCollisions() {
         if (player.x < enemy.x + enemy.width && player.x + player.width > enemy.x &&
             player.y < enemy.y + height && player.y + player.height > enemy.y) {
             player.lives = 0; // Instant game over
+            
+            // Record player death from enemy collision in telemetry
+            if (window.telemetryRecorder) {
+                window.telemetryRecorder.recordEvent('player_death', {
+                    position: { x: player.x, y: player.y },
+                    level: currentLevel,
+                    cause: 'enemy_collision',
+                    enemyType: enemy.type || 'unknown',
+                    livesRemaining: 0
+                });
+            }
         }
     });
 
@@ -1980,6 +2216,17 @@ function detectCollisions() {
                 player.lives--;
                 playSound('hullHit');
                 console.log('Training Level - Direct hull hit! Lives now:', player.lives); // Debug
+                
+                // Record player hit/death in telemetry
+                if (window.telemetryRecorder && player.lives <= 0) {
+                    window.telemetryRecorder.recordEvent('player_death', {
+                        position: { x: player.x, y: player.y },
+                        level: currentLevel,
+                        cause: 'enemy_bullet',
+                        livesRemaining: player.lives
+                    });
+                }
+                
                 player.x = canvas.width / 2 - PLAYER_WIDTH / 2;
             } else {
                 // Level 2+: Damage shield first, then hull
@@ -1996,6 +2243,17 @@ function detectCollisions() {
                         player.lives--;
                         playSound('hullHit');
                         console.log('Shield depleted + Hull hit! Lives now:', player.lives); // Debug
+                        
+                        // Record player hit/death in telemetry
+                        if (window.telemetryRecorder && player.lives <= 0) {
+                            window.telemetryRecorder.recordEvent('player_death', {
+                                position: { x: player.x, y: player.y },
+                                level: currentLevel,
+                                cause: 'enemy_bullet',
+                                livesRemaining: player.lives
+                            });
+                        }
+                        
                         player.x = canvas.width / 2 - PLAYER_WIDTH / 2;
                     }
                 } else {
@@ -2003,6 +2261,17 @@ function detectCollisions() {
                     player.lives--;
                     playSound('hullHit');
                     console.log('Hull hit! Lives now:', player.lives); // Debug
+                    
+                    // Record player hit/death in telemetry
+                    if (window.telemetryRecorder && player.lives <= 0) {
+                        window.telemetryRecorder.recordEvent('player_death', {
+                            position: { x: player.x, y: player.y },
+                            level: currentLevel,
+                            cause: 'enemy_bullet',
+                            livesRemaining: player.lives
+                        });
+                    }
+                    
                     player.x = canvas.width / 2 - PLAYER_WIDTH / 2;
                 }
             }
@@ -2028,6 +2297,8 @@ function detectCollisions() {
             } else if (powerup.type === 'ammo') {
                 player.ammoBoostActive = true;
                 player.ammoBoostShots = 100;
+                player.ammoBoostCollectedTime = Date.now(); // Track when collected for flash message
+                console.log('✅ Non-heating ammo collected! Flash message activated at:', player.ammoBoostCollectedTime);
                 playSound('powerup');
             } else if (powerup.type === 'grenade') {
                 if (player.grenades < player.maxGrenades) {
@@ -2194,6 +2465,47 @@ function update() {
                     if (result.success) {
                         console.log('✅ Score saved successfully to Firebase');
                         window.lastScoreSaveSuccess = true;
+
+                        // Save telemetry data
+                        if (window.telemetryRecorder) {
+                            // Ensure recording was started (in case it was missed)
+                            if (!window.telemetryRecorder.sessionData.playerEmail) {
+                                let userEmail = null;
+                                let userName = null;
+                                
+                                if (window.currentUser && window.currentUser.email) {
+                                    userEmail = window.currentUser.email;
+                                    userName = window.currentUser.name;
+                                } else if (typeof getCurrentUser === 'function') {
+                                    try {
+                                        const currentUser = getCurrentUser();
+                                        if (currentUser && currentUser.email) {
+                                            userEmail = currentUser.email;
+                                            userName = currentUser.name;
+                                        }
+                                    } catch (e) {
+                                        console.warn('⚠️ Could not get user for telemetry:', e);
+                                    }
+                                }
+                                
+                                if (userEmail) {
+                                    window.telemetryRecorder.startRecording(userEmail, userName);
+                                }
+                            }
+                            
+                                window.telemetryRecorder.sessionData.levelReached = currentLevel;
+                                window.telemetryRecorder.sessionData.finalScore = totalScore;
+                                window.telemetryRecorder.sessionData.gameEndReason = 'death';
+                                window.telemetryRecorder.sessionData.totalEnemiesKilled = totalEnemiesKilled;
+                                window.telemetryRecorder.stopRecording();
+                            window.telemetryRecorder.saveTelemetry().then(telemetryResult => {
+                                if (telemetryResult.success) {
+                                    console.log('✅ Telemetry saved:', window.telemetryRecorder.getSummary());
+                                } else {
+                                    console.warn('⚠️ Telemetry save failed:', telemetryResult.message);
+                                }
+                            });
+                        }
                         
                         // Update difficulty profile after game
                         updateDifficultyAfterGame({
@@ -2349,6 +2661,45 @@ function update() {
                             console.log('✅ Score saved successfully to Firebase');
                             window.lastScoreSaveSuccess = true;
                             
+                            // Save telemetry data
+                            if (window.telemetryRecorder) {
+                                // Ensure recording was started (in case it was missed)
+                                if (!window.telemetryRecorder.sessionData.playerEmail) {
+                                    let userEmail = null;
+                                    let userName = null;
+                                    
+                                    if (window.currentUser && window.currentUser.email) {
+                                        userEmail = window.currentUser.email;
+                                        userName = window.currentUser.name;
+                                    } else if (typeof getCurrentUser === 'function') {
+                                        try {
+                                            const currentUser = getCurrentUser();
+                                            if (currentUser && currentUser.email) {
+                                                userEmail = currentUser.email;
+                                                userName = currentUser.name;
+                                            }
+                                        } catch (e) {
+                                            console.warn('⚠️ Could not get user for telemetry:', e);
+                                        }
+                                    }
+                                    
+                                    if (userEmail) {
+                                        window.telemetryRecorder.startRecording(userEmail, userName);
+                                    }
+                                }
+                                
+                                window.telemetryRecorder.sessionData.levelReached = 3;
+                                window.telemetryRecorder.sessionData.finalScore = totalScore;
+                                window.telemetryRecorder.stopRecording();
+                                window.telemetryRecorder.saveTelemetry().then(telemetryResult => {
+                                    if (telemetryResult.success) {
+                                        console.log('✅ Telemetry saved:', window.telemetryRecorder.getSummary());
+                                    } else {
+                                        console.warn('⚠️ Telemetry save failed:', telemetryResult.message);
+                                    }
+                                });
+                            }
+                            
                             // Update difficulty profile after victory
                             updateDifficultyAfterGame({
                                 score: totalScore,
@@ -2438,6 +2789,11 @@ function update() {
     drawGrenades();
     drawPowerups();
     drawUI();
+    
+    // Draw tutorial overlay on top of everything
+    if (window.tutorialSystem && window.tutorialSystem.isActive) {
+        drawTutorialOverlay();
+    }
 
     movePlayer();
     moveBullets();
@@ -2456,11 +2812,23 @@ function update() {
 function keyDown(e) {
     if (e.key === 'ArrowRight' || e.key === 'Right') {
         keys.right = true;
+        if (window.telemetryRecorder) {
+            window.telemetryRecorder.recordMovement('right');
+        }
         e.preventDefault();
     } else if (e.key === 'ArrowLeft' || e.key === 'Left') {
         keys.left = true;
+        if (window.telemetryRecorder) {
+            window.telemetryRecorder.recordMovement('left');
+        }
         e.preventDefault();
     } else if (e.key === ' ' || e.key === 'Spacebar') {
+        // Skip tutorial if active
+        if (window.tutorialSystem && window.tutorialSystem.isActive) {
+            window.tutorialSystem.skipTutorial();
+            e.preventDefault();
+            return;
+        }
         keys.space = true;
         e.preventDefault();
     } else if (e.key === 'g' || e.key === 'G') {
@@ -2533,24 +2901,37 @@ function shoot() {
 
     // Normal shooting
     if (now - player.lastShotTime > player.shootCooldown && !player.weaponJammed) {
-        // Check if ammo boost is active
+        // Check if ammo boost is active (non-heating ammo)
         if (player.ammoBoostActive && player.ammoBoostShots > 0) {
-            player.heat = Math.min(player.maxHeat, player.heat + 1); // Only 1 heat per shot
+            // Non-heating ammo: do NOT increase heat at all
             player.ammoBoostShots--;
             if (player.ammoBoostShots === 0) {
                 player.ammoBoostActive = false;
             }
         } else {
+            // Regular ammo: increases heat
             player.heat = Math.min(player.maxHeat, player.heat + player.heatPerShot);
         }
 
         player.lastShotTime = now;
-        bullets.push({ x: player.x + player.width / 2, y: player.y });
         
+        // Record shot telemetry and get shot index
+        let shotIndex = null;
+        if (window.telemetryRecorder) {
+            shotIndex = window.telemetryRecorder.recordShot(player.x + player.width / 2, player.y, false);
+        }
+        
+        // Create bullet with shot index for hit tracking
+        bullets.push({ 
+            x: player.x + player.width / 2, 
+            y: player.y,
+            shotIndex: shotIndex  // Store shot index to mark as hit later
+        });
+
         // Track ammo usage
         totalAmmoUsed++;
         levelAmmoUsed++;
-        
+
         playSound('playerShoot');
     }
 }
@@ -2559,12 +2940,21 @@ function launchGrenade() {
     // Check if player has grenades and is not locked out
     if (player.grenades > 0 && !player.weaponLockoutActive) {
         player.grenades--;
+        const grenadeX = player.x + player.width / 2;
+        const grenadeY = player.y;
+
         grenades.push({
-            x: player.x + player.width / 2,
-            y: player.y,
+            x: grenadeX,
+            y: grenadeY,
             type: 'main',
             hasExploded: false
         });
+
+        // Record grenade launch telemetry
+        if (window.telemetryRecorder) {
+            window.telemetryRecorder.recordGrenade(grenadeX, grenadeY, 0);
+        }
+
         playSound('grenadeLaunch');
     }
 }
@@ -2928,7 +3318,37 @@ loadAndApplyDifficulty().then(() => {
     
     gameStartTime = Date.now();
     levelStartTime = Date.now(); // Initialize level start time
-    
+
+    // Start telemetry recording
+    if (window.telemetryRecorder) {
+        // Try to get user from multiple sources
+        let userEmail = null;
+        let userName = null;
+        
+        if (window.currentUser && window.currentUser.email) {
+            userEmail = window.currentUser.email;
+            userName = window.currentUser.name;
+        } else if (typeof getCurrentUser === 'function') {
+            try {
+                const currentUser = getCurrentUser();
+                if (currentUser && currentUser.email) {
+                    userEmail = currentUser.email;
+                    userName = currentUser.name;
+                }
+            } catch (e) {
+                console.warn('⚠️ Could not get user for telemetry:', e);
+            }
+        }
+        
+        if (userEmail) {
+            window.telemetryRecorder.startRecording(userEmail, userName);
+            console.log('📊 Telemetry recording started for:', userEmail);
+        } else {
+            console.warn('⚠️ Telemetry recording not started: No user email available');
+            console.log('   window.currentUser:', window.currentUser);
+        }
+    }
+
     // Set intensity spike timing with difficulty adjustments
     const intervalMin = adjustedGameParams.intensitySpikeIntervalMin || 5000;
     const intervalMax = adjustedGameParams.intensitySpikeIntervalMax || 10000;

@@ -2,6 +2,7 @@
 // Uses localStorage to remember logged-in users
 
 const AUTH_STORAGE_KEY = 'galacticStrategistAuth';
+const FIRST_LOGIN_KEY = 'galacticStrategistFirstLogin';
 
 // Check if user is logged in
 function isLoggedIn() {
@@ -30,24 +31,39 @@ function login(name, email) {
     if (!name || !email) {
         return { success: false, message: 'Please provide both name and email' };
     }
-    
+
     const trimmedEmail = email.toLowerCase().trim();
-    
+
     // Check if email is authorized
     if (!isAuthorized(trimmedEmail)) {
         return { success: false, message: 'Email not authorized. Contact admin for access.' };
     }
-    
+
+    // Check if this is first-time login
+    const firstLoginData = localStorage.getItem(FIRST_LOGIN_KEY);
+    let firstTimeUsers = firstLoginData ? JSON.parse(firstLoginData) : [];
+    const isFirstTime = !firstTimeUsers.includes(trimmedEmail);
+
     // Save to localStorage
     const userData = {
         name: name.trim(),
         email: trimmedEmail,
-        loginTime: Date.now()
+        loginTime: Date.now(),
+        isFirstTime: isFirstTime
     };
-    
+
     localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
-    
-    return { success: true, user: userData };
+
+    // Mark user as having logged in before
+    if (isFirstTime) {
+        firstTimeUsers.push(trimmedEmail);
+        localStorage.setItem(FIRST_LOGIN_KEY, JSON.stringify(firstTimeUsers));
+
+        // Trigger welcome notification (will be called after page loads)
+        userData.needsWelcomeNotification = true;
+    }
+
+    return { success: true, user: userData, isFirstTime: isFirstTime };
 }
 
 // Logout user

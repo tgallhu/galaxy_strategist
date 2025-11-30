@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Retro space background -->
+  <rect width="32" height="32" fill="#000015"/>
+  
+  <!-- Stars -->
+  <circle cx="8" cy="6" r="1" fill="#FFFFFF"/>
+  <circle cx="24" cy="8" r="1" fill="#FFFFFF"/>
+  <circle cx="12" cy="12" r="1" fill="#FFFFFF"/>
+  <circle cx="28" cy="14" r="1" fill="#FFFFFF"/>
+  <circle cx="6" cy="20" r="1" fill="#FFFFFF"/>
+  <circle cx="26" cy="22" r="1" fill="#FFFFFF"/>
+  
+  <!-- Retro spaceship (pixel art style) -->
+  <!-- Ship body -->
+  <rect x="12" y="16" width="8" height="10" fill="#00BFFF"/>
+  <!-- Ship nose -->
+  <polygon points="14,16 16,12 18,16" fill="#00BFFF"/>
+  <!-- Cockpit -->
+  <rect x="14" y="18" width="4" height="3" fill="#FFFF00"/>
+  <!-- Wings -->
+  <rect x="10" y="22" width="3" height="4" fill="#4169E1"/>
+  <rect x="19" y="22" width="3" height="4" fill="#4169E1"/>
+  <!-- Engine glow -->
+  <rect x="13" y="26" width="2" height="2" fill="#FF4500"/>
+  <rect x="17" y="26" width="2" height="2" fill="#FF4500"/>
+  
+  <!-- Cyan glow effect -->
+  <circle cx="16" cy="20" r="8" fill="none" stroke="#00FFFF" stroke-width="0.5" opacity="0.3"/>
+</svg>
+
