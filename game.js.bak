@@ -231,42 +231,97 @@ const sounds = {
         oscillator.stop(audioCtx.currentTime + 0.25);
     },
 
-    // Grenade explosion - big boom with fragments
+    // Grenade explosion - DRAMATIC big boom with fragments
     grenadeExplode: (audioCtx) => {
-        // Main explosion
+        const baseTime = audioCtx.currentTime;
+        const duration = 0.8; // Longer explosion
+
+        // Layer 1: Deep sub-bass BOOM (very low frequency punch)
+        const subBoom = audioCtx.createOscillator();
+        const subBoomGain = audioCtx.createGain();
+        subBoom.type = 'sawtooth';
+        subBoom.frequency.setValueAtTime(80, baseTime);
+        subBoom.frequency.exponentialRampToValueAtTime(20, baseTime + 0.3);
+        subBoomGain.gain.setValueAtTime(0.5, baseTime);
+        subBoomGain.gain.exponentialRampToValueAtTime(0.01, baseTime + 0.5);
+        subBoom.connect(subBoomGain);
+        subBoomGain.connect(audioCtx.destination);
+        subBoom.start(baseTime);
+        subBoom.stop(baseTime + 0.5);
+
+        // Layer 2: Main explosion body (mid-low range)
         const explosion = audioCtx.createOscillator();
         const explosionGain = audioCtx.createGain();
-
         explosion.type = 'sawtooth';
-        explosion.frequency.setValueAtTime(500, audioCtx.currentTime);
-        explosion.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.4);
-
-        explosionGain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-        explosionGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
-
+        explosion.frequency.setValueAtTime(600, baseTime);
+        explosion.frequency.exponentialRampToValueAtTime(25, baseTime + duration);
+        explosionGain.gain.setValueAtTime(0.6, baseTime);
+        explosionGain.gain.exponentialRampToValueAtTime(0.01, baseTime + duration);
         explosion.connect(explosionGain);
         explosionGain.connect(audioCtx.destination);
+        explosion.start(baseTime);
+        explosion.stop(baseTime + duration);
 
-        explosion.start(audioCtx.currentTime);
-        explosion.stop(audioCtx.currentTime + 0.4);
+        // Layer 3: Mid-range PUNCH (adds impact)
+        const punch = audioCtx.createOscillator();
+        const punchGain = audioCtx.createGain();
+        punch.type = 'square';
+        punch.frequency.setValueAtTime(400, baseTime);
+        punch.frequency.exponentialRampToValueAtTime(50, baseTime + 0.25);
+        punchGain.gain.setValueAtTime(0.4, baseTime);
+        punchGain.gain.exponentialRampToValueAtTime(0.01, baseTime + 0.25);
+        punch.connect(punchGain);
+        punchGain.connect(audioCtx.destination);
+        punch.start(baseTime);
+        punch.stop(baseTime + 0.25);
 
-        // Fragment scatter sounds
-        [0.1, 0.15, 0.2, 0.25].forEach((delay) => {
+        // Layer 4: High-frequency CRACK (shockwave)
+        const crack = audioCtx.createOscillator();
+        const crackGain = audioCtx.createGain();
+        crack.type = 'square';
+        crack.frequency.setValueAtTime(2500, baseTime);
+        crack.frequency.exponentialRampToValueAtTime(200, baseTime + 0.15);
+        crackGain.gain.setValueAtTime(0.35, baseTime);
+        crackGain.gain.exponentialRampToValueAtTime(0.01, baseTime + 0.15);
+        crack.connect(crackGain);
+        crackGain.connect(audioCtx.destination);
+        crack.start(baseTime);
+        crack.stop(baseTime + 0.15);
+
+        // Layer 5: Echo/reverb tail (delayed secondary boom)
+        const echo = audioCtx.createOscillator();
+        const echoGain = audioCtx.createGain();
+        echo.type = 'sawtooth';
+        echo.frequency.setValueAtTime(200, baseTime + 0.2);
+        echo.frequency.exponentialRampToValueAtTime(30, baseTime + 0.6);
+        echoGain.gain.setValueAtTime(0.25, baseTime + 0.2);
+        echoGain.gain.exponentialRampToValueAtTime(0.01, baseTime + 0.6);
+        echo.connect(echoGain);
+        echoGain.connect(audioCtx.destination);
+        echo.start(baseTime + 0.2);
+        echo.stop(baseTime + 0.6);
+
+        // Enhanced fragment scatter sounds (more dramatic)
+        [0.08, 0.12, 0.18, 0.24, 0.30, 0.36].forEach((delay, index) => {
             const fragment = audioCtx.createOscillator();
             const fragmentGain = audioCtx.createGain();
+            
+            // Vary fragment pitches for more complexity
+            const startFreq = 1500 + (index * 200);
+            const endFreq = 400 + (index * 100);
 
             fragment.type = 'square';
-            fragment.frequency.setValueAtTime(1200, audioCtx.currentTime + delay);
-            fragment.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + delay + 0.1);
+            fragment.frequency.setValueAtTime(startFreq, baseTime + delay);
+            fragment.frequency.exponentialRampToValueAtTime(endFreq, baseTime + delay + 0.15);
 
-            fragmentGain.gain.setValueAtTime(0.1, audioCtx.currentTime + delay);
-            fragmentGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + delay + 0.1);
+            fragmentGain.gain.setValueAtTime(0.2, baseTime + delay);
+            fragmentGain.gain.exponentialRampToValueAtTime(0.01, baseTime + delay + 0.15);
 
             fragment.connect(fragmentGain);
             fragmentGain.connect(audioCtx.destination);
 
-            fragment.start(audioCtx.currentTime + delay);
-            fragment.stop(audioCtx.currentTime + delay + 0.1);
+            fragment.start(baseTime + delay);
+            fragment.stop(baseTime + delay + 0.15);
         });
     }
 };
@@ -313,6 +368,7 @@ for (let layer = 0; layer < 3; layer++) {
 
 
 // --- GAME CONSTANTS ---
+const UI_HEIGHT = 100; // Height of UI area at top
 const PLAYER_WIDTH = 48; // Matched to sprite
 const PLAYER_HEIGHT = 48; // Matched to sprite
 const PLAYER_SPEED = 6.5; // Increased for smoother, more responsive control
@@ -352,7 +408,7 @@ let player = {
     lockoutDuration: 3000,              // 3 second lockout penalty
     shield: 100,
     maxShield: 100,
-    shieldRechargeRate: 0.2,
+    shieldRechargeRate: 0.05, // Slower recharge - takes ~33 seconds to fully recharge
     shootCooldown: 200, // Reduced for more responsive shooting
     lastShotTime: 0,
     lives: 3,
@@ -360,7 +416,8 @@ let player = {
     ammoBoostActive: false,
     ammoBoostShots: 0,
     grenades: 1,
-    maxGrenades: 3
+    maxGrenades: 3,
+    shieldHitTime: 0  // Track when shield was last hit for flash effect
 };
 let bullets = [];
 let enemyBullets = [];
@@ -401,6 +458,17 @@ const LEVEL_BALANCE = {
 
 // --- GAME STATE ---
 let gameStartTime = 0;
+let levelStartTime = 0; // Start time for current level
+let totalAmmoUsed = 0; // Total shots fired
+let levelAmmoUsed = 0; // Ammo used in current level
+let totalScore = 0; // Total score across all levels
+let totalEnemiesKilled = 0; // Track total enemies killed
+let initialEnemyCount = 0; // Track starting enemy count
+
+// Adaptive Difficulty System
+let difficultyMultiplier = 1.0; // Base difficulty
+let playerDifficultyProfile = null;
+let adjustedGameParams = {}; // Stores difficulty-adjusted parameters
 
 // Key state tracking for smoother controls
 const keys = {
@@ -409,11 +477,12 @@ const keys = {
     space: false,
     grenade: false
 };
+let showHelp = false; // Toggle help panel
 let strikeVolumeMultiplier = 1;
 let intensitySpikeActive = false;
 let nextIntensitySpikeTime = 0;
 let intensitySpikeEndTime = 0;
-let currentLevel = 1;
+let currentLevel = 3;
 
 // --- LEVEL DEFINITIONS ---
 const LEVELS = {
@@ -468,12 +537,16 @@ function createEnemies() {
         default:
             createWallFormation(level);
     }
+    
+    // Set initial enemy count after enemies are created
+    initialEnemyCount = enemies.length;
+    console.log(`Level ${currentLevel}: Created ${initialEnemyCount} enemies`);
 }
 
 // Level 1: The Wall - Dense 5x10 rectangle
 function createWallFormation(level) {
     const startX = 60;
-    const startY = 50;
+    const startY = UI_HEIGHT + 50; // Start below UI area
 
     for (let row = 0; row < level.rows; row++) {
         for (let col = 0; col < level.cols; col++) {
@@ -492,7 +565,7 @@ function createWallFormation(level) {
 // Level 2: The Funnel - V-shape formation
 function createFunnelFormation(level) {
     const startX = 60;
-    const startY = 50;
+    const startY = UI_HEIGHT + 50; // Start below UI area
     const cols = level.cols;
     const centerCol = Math.floor(cols / 2);
 
@@ -517,7 +590,7 @@ function createFunnelFormation(level) {
 // Level 3: The Citadel - 4x4 Sentinel core with Normal shell
 function createCitadelFormation(level) {
     const startX = 100;
-    const startY = 20; // Pushed higher to leave limited space at bottom
+    const startY = UI_HEIGHT + 20; // Start below UI area
     const gridSize = 10; // 10x10 total grid
     const sentinelStartRow = 3;
     const sentinelStartCol = 3;
@@ -543,9 +616,9 @@ function createCitadelFormation(level) {
                 type: isSentinel ? 'sentinel' : 'normal'
             };
 
-            // Sentinel enemies have shields (3 hits to destroy)
+            // Sentinel enemies have shields (difficulty-adjusted hits to destroy)
             if (enemy.type === 'sentinel') {
-                enemy.shieldHits = 3;
+                enemy.shieldHits = adjustedGameParams.sentinelShieldHits || 3;
             }
 
             enemies.push(enemy);
@@ -619,58 +692,239 @@ function drawPlayer() {
     ctx.fillStyle = '#FF4500'; // Orange-red
     ctx.fillRect(player.x + 8, player.y + player.height - 3, 10, 3); // Left engine
     ctx.fillRect(player.x + player.width - 18, player.y + player.height - 3, 10, 3); // Right engine
+
+    // Shield visualization (Level 2+ only)
+    if (currentLevel >= 2 && player.shield > 0) {
+        const shieldPercent = player.shield / player.maxShield;
+        const now = Date.now();
+        const timeSinceHit = now - player.shieldHitTime;
+
+        // Shield color based on strength
+        let shieldColor, shieldAlpha;
+        if (shieldPercent > 0.6) {
+            shieldColor = '0, 191, 255'; // Cyan - strong
+            shieldAlpha = 0.4;
+        } else if (shieldPercent > 0.3) {
+            shieldColor = '0, 255, 255'; // Bright cyan - medium
+            shieldAlpha = 0.5;
+        } else {
+            shieldColor = '255, 165, 0'; // Orange - critical
+            shieldAlpha = 0.6;
+        }
+
+        // Hit flash effect (bright white flash for 300ms after hit)
+        if (timeSinceHit < 300) {
+            const flashIntensity = 1 - (timeSinceHit / 300);
+            shieldColor = '255, 255, 255'; // White flash
+            shieldAlpha = 0.8 * flashIntensity;
+        }
+
+        // Pulsing effect when shield is low
+        let pulseAlpha = shieldAlpha;
+        if (shieldPercent <= 0.3 && timeSinceHit >= 300) {
+            pulseAlpha = shieldAlpha + Math.sin(Date.now() / 100) * 0.2;
+        }
+
+        // Draw shield as an oval/ellipse around the ship
+        const shieldPadding = 8;
+        const centerX = player.x + player.width / 2;
+        const centerY = player.y + player.height / 2;
+        const radiusX = player.width / 2 + shieldPadding;
+        const radiusY = player.height / 2 + shieldPadding;
+
+        // Shield fill
+        ctx.beginPath();
+        ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${shieldColor}, ${pulseAlpha * 0.3})`;
+        ctx.fill();
+
+        // Shield border (glowing edge)
+        ctx.beginPath();
+        ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${shieldColor}, ${pulseAlpha})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Inner glow ring
+        ctx.beginPath();
+        ctx.ellipse(centerX, centerY, radiusX - 2, radiusY - 2, 0, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255, 255, 255, ${pulseAlpha * 0.5})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Hexagonal energy pattern overlay
+        const hexagonRadius = Math.max(radiusX, radiusY);
+        for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 3) {
+            const x1 = centerX + Math.cos(angle) * hexagonRadius;
+            const y1 = centerY + Math.sin(angle) * hexagonRadius * 0.8;
+            const x2 = centerX + Math.cos(angle + Math.PI / 3) * hexagonRadius;
+            const y2 = centerY + Math.sin(angle + Math.PI / 3) * hexagonRadius * 0.8;
+
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.strokeStyle = `rgba(${shieldColor}, ${pulseAlpha * 0.3})`;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+    }
 }
 
 function drawEnemies() {
     enemies.forEach(enemy => {
-        const height = intensitySpikeActive ? 40 : enemy.height;
+        const sizeBonus = intensitySpikeActive ? (adjustedGameParams.intensitySpikeEnemySizeBonus || 8) : 0;
+        const height = enemy.height + sizeBonus;
 
-        // Draw custom space invader enemy
-        let color = intensitySpikeActive ? '#FF0000' : '#00FF00';
-
-        // Sentinel enemies have metallic dark armor
+        // SENTINEL ENEMIES - Completely different design (Heavy Fortress)
         if (enemy.type === 'sentinel' && !intensitySpikeActive) {
-            color = '#3C3C3C'; // Dark metallic gray
-        }
+            // Main armored body - large fortified block
+            ctx.fillStyle = '#2A2A2A'; // Very dark gray
+            ctx.fillRect(enemy.x, enemy.y, enemy.width, height);
 
-        ctx.fillStyle = color;
+            // Armor plating panels
+            ctx.fillStyle = '#3C3C3C';
+            ctx.fillRect(enemy.x + 2, enemy.y + 2, enemy.width - 4, 6);
+            ctx.fillRect(enemy.x + 2, enemy.y + height - 8, enemy.width - 4, 6);
 
-        // Body
-        ctx.fillRect(enemy.x + 8, enemy.y, enemy.width - 16, height - 8);
+            // Side armor plates
+            ctx.fillStyle = '#4A4A4A';
+            ctx.fillRect(enemy.x, enemy.y + 4, 4, height - 8);
+            ctx.fillRect(enemy.x + enemy.width - 4, enemy.y + 4, 4, height - 8);
 
-        // Head/top part
-        ctx.fillRect(enemy.x + 4, enemy.y + 6, enemy.width - 8, 10);
+            // Weapon ports (dark slots)
+            ctx.fillStyle = '#0A0A0A';
+            ctx.fillRect(enemy.x + 10, enemy.y + 10, 6, 4);
+            ctx.fillRect(enemy.x + enemy.width - 16, enemy.y + 10, 6, 4);
 
-        // Eyes
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(enemy.x + 12, enemy.y + 8, 6, 6);
-        ctx.fillRect(enemy.x + enemy.width - 18, enemy.y + 8, 6, 6);
+            // Turret/command module on top
+            ctx.fillStyle = '#505050';
+            const turretWidth = 16;
+            const turretHeight = 6;
+            ctx.fillRect(enemy.x + enemy.width/2 - turretWidth/2, enemy.y - 2, turretWidth, turretHeight);
 
-        // Legs/tentacles
-        ctx.fillStyle = color;
-        ctx.fillRect(enemy.x + 4, enemy.y + height - 8, 6, 8);
-        ctx.fillRect(enemy.x + enemy.width - 10, enemy.y + height - 8, 6, 8);
+            // Antenna/sensor array
+            ctx.fillStyle = '#FF4500';
+            ctx.fillRect(enemy.x + enemy.width/2 - 1, enemy.y - 4, 2, 2);
 
-        // Middle leg
-        ctx.fillRect(enemy.x + enemy.width/2 - 3, enemy.y + height - 6, 6, 6);
-
-        // Antennae (only for intense mode)
-        if (intensitySpikeActive) {
-            ctx.fillRect(enemy.x + 8, enemy.y - 4, 3, 4);
-            ctx.fillRect(enemy.x + enemy.width - 11, enemy.y - 4, 3, 4);
-        }
-
-        // Sentinel core - flashing power source
-        if (enemy.type === 'sentinel' && !intensitySpikeActive) {
+            // Power core - centered, pulsing
             const coreFlash = Math.sin(Date.now() / 150) > 0;
-            ctx.fillStyle = coreFlash ? '#FF0000' : '#FFAA00'; // Red/Orange pulse
-            const coreSize = 6;
+            ctx.fillStyle = coreFlash ? '#FF0000' : '#FF6600'; // Red/Orange pulse
+            const coreSize = 10;
             ctx.fillRect(
                 enemy.x + enemy.width / 2 - coreSize / 2,
                 enemy.y + height / 2 - coreSize / 2,
                 coreSize,
                 coreSize
             );
+
+            // Core inner glow
+            ctx.fillStyle = coreFlash ? '#FFFF00' : '#FFAA00';
+            ctx.fillRect(
+                enemy.x + enemy.width / 2 - 4,
+                enemy.y + height / 2 - 4,
+                8,
+                8
+            );
+
+            // Vents/exhausts at bottom
+            ctx.fillStyle = '#1A1A1A';
+            ctx.fillRect(enemy.x + 6, enemy.y + height - 4, 3, 4);
+            ctx.fillRect(enemy.x + enemy.width - 9, enemy.y + height - 4, 3, 4);
+
+            // Hazard stripes
+            ctx.fillStyle = '#FFAA00';
+            ctx.fillRect(enemy.x + 2, enemy.y + 2, 3, 2);
+            ctx.fillRect(enemy.x + enemy.width - 5, enemy.y + 2, 3, 2);
+
+        } else {
+            // NORMAL ENEMIES - 3 different variants
+            let color = intensitySpikeActive ? '#FF0000' : '#00FF00';
+
+            // Determine enemy variant based on position
+            const variant = Math.floor((enemy.x + enemy.y) / 100) % 3;
+
+            if (variant === 0) {
+                // VARIANT 1: Fighter - Diamond/Angular shape
+                ctx.fillStyle = color;
+
+                // Main diamond body
+                ctx.fillRect(enemy.x + enemy.width/2 - 6, enemy.y + 4, 12, 12);
+                ctx.fillRect(enemy.x + enemy.width/2 - 10, enemy.y + 8, 20, 6);
+
+                // Cockpit/eye
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(enemy.x + enemy.width/2 - 2, enemy.y + 10, 4, 3);
+
+                // Wings
+                ctx.fillStyle = color;
+                ctx.fillRect(enemy.x + 2, enemy.y + 12, 8, 4);
+                ctx.fillRect(enemy.x + enemy.width - 10, enemy.y + 12, 8, 4);
+
+                // Engine thrusters
+                ctx.fillStyle = intensitySpikeActive ? '#FFFF00' : '#00FFFF';
+                ctx.fillRect(enemy.x + enemy.width/2 - 8, enemy.y + height - 4, 4, 3);
+                ctx.fillRect(enemy.x + enemy.width/2 + 4, enemy.y + height - 4, 4, 3);
+
+            } else if (variant === 1) {
+                // VARIANT 2: Interceptor - Sleek/Streamlined
+                ctx.fillStyle = color;
+
+                // Nose cone
+                ctx.fillRect(enemy.x + enemy.width/2 - 4, enemy.y, 8, 6);
+                ctx.fillRect(enemy.x + enemy.width/2 - 2, enemy.y - 2, 4, 2);
+
+                // Main fuselage
+                ctx.fillRect(enemy.x + enemy.width/2 - 8, enemy.y + 6, 16, 12);
+
+                // Side panels
+                ctx.fillRect(enemy.x + 4, enemy.y + 10, 6, 6);
+                ctx.fillRect(enemy.x + enemy.width - 10, enemy.y + 10, 6, 6);
+
+                // Cockpit windows
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(enemy.x + enemy.width/2 - 4, enemy.y + 8, 3, 6);
+                ctx.fillRect(enemy.x + enemy.width/2 + 1, enemy.y + 8, 3, 6);
+
+                // Rear stabilizers
+                ctx.fillStyle = color;
+                ctx.fillRect(enemy.x + enemy.width/2 - 10, enemy.y + height - 4, 6, 3);
+                ctx.fillRect(enemy.x + enemy.width/2 + 4, enemy.y + height - 4, 6, 3);
+
+            } else {
+                // VARIANT 3: Bomber - Bulky/Heavy
+                ctx.fillStyle = color;
+
+                // Wide main body
+                ctx.fillRect(enemy.x + 6, enemy.y + 4, enemy.width - 12, 14);
+
+                // Top armor
+                ctx.fillRect(enemy.x + 10, enemy.y, enemy.width - 20, 4);
+
+                // Weapon pods
+                ctx.fillStyle = '#006600';
+                ctx.fillRect(enemy.x + 4, enemy.y + 8, 6, 8);
+                ctx.fillRect(enemy.x + enemy.width - 10, enemy.y + 8, 6, 8);
+
+                // Cockpit viewport
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(enemy.x + enemy.width/2 - 6, enemy.y + 6, 12, 4);
+
+                // Dual engines
+                ctx.fillStyle = intensitySpikeActive ? '#FF6600' : '#00FF88';
+                ctx.fillRect(enemy.x + 8, enemy.y + height - 4, 5, 4);
+                ctx.fillRect(enemy.x + enemy.width - 13, enemy.y + height - 4, 5, 4);
+
+                // Engine glow
+                ctx.fillRect(enemy.x + 10, enemy.y + height - 2, 3, 2);
+                ctx.fillRect(enemy.x + enemy.width - 13, enemy.y + height - 2, 3, 2);
+            }
+
+            // Intensity spike antennae (all variants)
+            if (intensitySpikeActive) {
+                ctx.fillStyle = '#FF0000';
+                ctx.fillRect(enemy.x + 8, enemy.y - 4, 3, 4);
+                ctx.fillRect(enemy.x + enemy.width - 11, enemy.y - 4, 3, 4);
+            }
         }
 
         // Draw enhanced shield overlay for sentinels
@@ -1083,6 +1337,106 @@ function drawLevelDisplay() {
     ctx.fillText(`LEVEL ${currentLevel}: ${level.name}`, canvas.width / 2, 20);
 }
 
+function drawDifficultyTier() {
+    if (!playerDifficultyProfile) return;
+    
+    const tier = playerDifficultyProfile.difficultyTier || getDifficultyTierName(difficultyMultiplier);
+    const multiplier = difficultyMultiplier || 1.0;
+    
+    // Color based on tier
+    let color = '#FFFFFF';
+    if (multiplier >= 2.0) color = '#FF0000'; // Master - Red
+    else if (multiplier >= 1.6) color = '#FF6600'; // Expert - Orange
+    else if (multiplier >= 1.3) color = '#FFAA00'; // Advanced - Yellow-Orange
+    else if (multiplier >= 1.0) color = '#00FF00'; // Normal - Green
+    else color = '#00FFFF'; // Beginner - Cyan
+    
+    ctx.fillStyle = color;
+    ctx.font = '12px "Courier New"';
+    ctx.textAlign = "left";
+    ctx.fillText(`DIFFICULTY: ${tier.toUpperCase()} (${multiplier.toFixed(2)}x)`, 10, 95);
+}
+
+function drawTimeCounter() {
+    const now = Date.now();
+    const elapsedSeconds = (now - levelStartTime) / 1000;
+    const minutes = Math.floor(elapsedSeconds / 60);
+    const seconds = Math.floor(elapsedSeconds % 60);
+    const milliseconds = Math.floor((elapsedSeconds % 1) * 100);
+    
+    // Format time as MM:SS:MS
+    const timeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}:${milliseconds.toString().padStart(2, '0')}`;
+    
+    ctx.font = 'bold 18px "Courier New"';
+    ctx.textAlign = "center";
+    
+    // Draw with shadow for visibility
+    ctx.fillStyle = '#000000';
+    ctx.fillText(`TIME: ${timeString}`, canvas.width / 2 + 2, 45);
+    ctx.fillStyle = '#00FFFF'; // Cyan color
+    ctx.fillText(`TIME: ${timeString}`, canvas.width / 2, 43);
+}
+
+function calculateLevelScore(timeSeconds, ammoUsed, enemiesKilled, totalEnemies) {
+    // Score formula: Rewards actual gameplay
+    // Ensure we have valid inputs
+    const validTime = Math.max(0, timeSeconds || 0);
+    const validAmmo = Math.max(0, ammoUsed || 0);
+    const validKills = Math.max(0, enemiesKilled || 0);
+    const validTotalEnemies = Math.max(1, totalEnemies || 50);
+    
+    // No score for instant deaths (< 3 seconds with no kills and no ammo)
+    if (validKills === 0 && validTime < 3 && validAmmo === 0) {
+        return 0;
+    }
+    
+    // Base points for survival (more time = better)
+    const survivalScore = validTime * 30; // 30 points per second
+    
+    // Points for enemies killed (most important - up to 8000 points)
+    const killRatio = Math.min(1, validKills / validTotalEnemies); // 0 to 1
+    const killScore = killRatio * 8000; // Up to 8000 for all enemies killed
+    
+    // Efficiency bonus: more kills per ammo = better (but only if they actually killed enemies)
+    let efficiencyScore = 0;
+    if (validKills > 0 && validAmmo > 0) {
+        const killsPerAmmo = validKills / validAmmo;
+        efficiencyScore = Math.min(2000, killsPerAmmo * 100); // Bonus for efficiency, max 2000
+    } else if (validKills > 0 && validAmmo === 0) {
+        // Bonus for killing enemies without using ammo (grenades, etc.)
+        efficiencyScore = 1000;
+    }
+    
+    // Small bonus for longer games (encourages survival)
+    const timeBonus = validTime > 60 ? 500 : 0;
+    
+    // Calculate final score
+    const finalScore = survivalScore + killScore + efficiencyScore + timeBonus;
+    
+    return Math.max(0, Math.floor(finalScore));
+}
+
+function drawScore() {
+    const now = Date.now();
+    const levelTime = (now - levelStartTime) / 1000;
+    const levelEnemiesKilled = initialEnemyCount - enemies.length;
+    const levelScore = calculateLevelScore(levelTime, levelAmmoUsed, levelEnemiesKilled, initialEnemyCount);
+    
+    ctx.font = 'bold 16px "Courier New"';
+    ctx.textAlign = "center";
+    
+    // Current total score with shadow
+    ctx.fillStyle = '#000000';
+    ctx.fillText(`SCORE: ${totalScore + levelScore}`, canvas.width / 2 + 2, 67);
+    ctx.fillStyle = '#FFD700'; // Gold color
+    ctx.fillText(`SCORE: ${totalScore + levelScore}`, canvas.width / 2, 65);
+    
+    // Level stats below score
+    ctx.font = '12px "Courier New"';
+    ctx.fillStyle = '#888888';
+    ctx.fillText(`Level Score: ${levelScore} | Kills: ${levelEnemiesKilled}/${initialEnemyCount} | Ammo: ${levelAmmoUsed}`, canvas.width / 2, 82);
+}
+
 function drawAudioToggle() {
     const buttonX = canvas.width - 80;
     const buttonY = canvas.height - 30;
@@ -1111,13 +1465,181 @@ function drawAudioToggle() {
     ctx.fillText('Press M to toggle', canvas.width - 10, canvas.height - 10);
 }
 
+function drawHelpButton() {
+    const buttonX = canvas.width - 160;
+    const buttonY = canvas.height - 30;
+    const buttonWidth = 60;
+    const buttonHeight = 20;
+
+    // Button background
+    ctx.fillStyle = showHelp ? '#00FFFF' : '#444444';
+    ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
+
+    // Button border
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(buttonX, buttonY, buttonWidth, buttonHeight);
+
+    // Button text
+    ctx.fillStyle = showHelp ? '#000000' : '#FFFFFF';
+    ctx.font = '12px "Courier New"';
+    ctx.textAlign = "center";
+    ctx.fillText(showHelp ? 'HELP ON' : 'HELP', buttonX + buttonWidth / 2, buttonY + 14);
+
+    // Instructions
+    if (!showHelp) {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = '10px "Courier New"';
+        ctx.textAlign = "left";
+        ctx.fillText('Press H for help', buttonX, canvas.height - 10);
+    }
+}
+
+function drawHelpPanel() {
+    if (!showHelp) return;
+    
+    const panelWidth = 280;
+    const panelX = canvas.width - panelWidth - 10;
+    const panelY = UI_HEIGHT + 10;
+    const panelHeight = canvas.height - UI_HEIGHT - 20;
+    
+    // Semi-transparent background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
+    
+    // Border
+    ctx.strokeStyle = '#00FFFF';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(panelX, panelY, panelWidth, panelHeight);
+    
+    // Title
+    ctx.fillStyle = '#00FFFF';
+    ctx.font = 'bold 16px "Courier New"';
+    ctx.textAlign = "center";
+    ctx.fillText('HELP - UI GUIDE', panelX + panelWidth / 2, panelY + 25);
+    
+    // Help content
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '12px "Courier New"';
+    ctx.textAlign = "left";
+    
+    let yPos = panelY + 50;
+    const lineHeight = 22;
+    const labelWidth = 120;
+    
+    // Helper function to draw a help item
+    function drawHelpItem(label, description, icon = '') {
+        ctx.fillStyle = '#FFFF00';
+        ctx.font = 'bold 12px "Courier New"';
+        ctx.fillText(icon + label + ':', panelX + 10, yPos);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = '11px "Courier New"';
+        const words = description.split(' ');
+        let line = '';
+        let currentY = yPos + 15;
+        
+        for (let word of words) {
+            const testLine = line + word + ' ';
+            const metrics = ctx.measureText(testLine);
+            if (metrics.width > panelWidth - 30 && line !== '') {
+                ctx.fillText(line, panelX + 15, currentY);
+                line = word + ' ';
+                currentY += 14;
+            } else {
+                line = testLine;
+            }
+        }
+        if (line !== '') {
+            ctx.fillText(line, panelX + 15, currentY);
+        }
+        
+        yPos = currentY + 10;
+    }
+    
+    // Health/Lives
+    ctx.fillStyle = '#FF0066';
+    ctx.fillRect(panelX + 10, yPos - 18, 15, 15);
+    drawHelpItem('HULL (Lives)', 'Your health. Each heart = 1 life. Lost when hit without shield.', '❤');
+    
+    // Shield
+    drawHelpItem('SHIELD', 'Protection bar (Level 2+). Absorbs damage before hull. Recharges slowly. OFFLINE in Level 1.', '🛡');
+    
+    // Heat
+    drawHelpItem('HEAT', 'Weapon temperature. Too high = weapon lockout. Yellow=OK, Orange=Warning, Red=Danger!', '🌡');
+    
+    // Grenades
+    ctx.fillStyle = '#FF6600';
+    ctx.beginPath();
+    ctx.arc(panelX + 10, yPos - 12, 6, 0, Math.PI * 2);
+    ctx.fill();
+    drawHelpItem('GRENADES', 'Explosive weapons. Press G to throw. Replenished by powerups.', '💣');
+    
+    // Ammo/Heat relationship
+    yPos += 5;
+    drawHelpItem('AMMO/HEAT', 'Firing increases heat. Wait for cooldown or face lockout!', '⚡');
+    
+    // Powerups
+    yPos += 5;
+    drawHelpItem('POWERUPS', 'Pick up: ❤=Life, 🛡=Shield, ⚡=Ammo, 💣=Grenade', '✨');
+    
+    // Score
+    yPos += 5;
+    drawHelpItem('SCORE', 'Based on time survived, enemies killed, and ammo efficiency. Higher is better!', '⭐');
+    
+    // Time
+    yPos += 5;
+    drawHelpItem('TIME', 'Survival time. Longer = more score points.', '⏱');
+    
+    // Controls
+    yPos += 15;
+    ctx.fillStyle = '#00FF00';
+    ctx.font = 'bold 14px "Courier New"';
+    ctx.fillText('CONTROLS:', panelX + 10, yPos);
+    yPos += 20;
+    
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '11px "Courier New"';
+    ctx.fillText('← → Arrow Keys: Move', panelX + 15, yPos);
+    yPos += 16;
+    ctx.fillText('SPACE: Fire weapon', panelX + 15, yPos);
+    yPos += 16;
+    ctx.fillText('G: Throw grenade', panelX + 15, yPos);
+    yPos += 16;
+    ctx.fillText('H: Toggle this help', panelX + 15, yPos);
+    yPos += 16;
+    ctx.fillText('M: Toggle audio', panelX + 15, yPos);
+    
+    // Close hint at bottom
+    ctx.fillStyle = '#888888';
+    ctx.font = '10px "Courier New"';
+    ctx.textAlign = "center";
+    ctx.fillText('Press H to close', panelX + panelWidth / 2, panelY + panelHeight - 15);
+}
+
 function drawUI() {
+    // Draw semi-transparent background for UI area at the top
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(0, 0, canvas.width, UI_HEIGHT);
+    
+    // Draw border between UI and game area
+    ctx.strokeStyle = '#333333';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, UI_HEIGHT);
+    ctx.lineTo(canvas.width, UI_HEIGHT);
+    ctx.stroke();
+    
     drawHealthBar();
     drawShieldBar();
     drawHeatBar();
     drawGrenadeCount();
     drawLevelDisplay();
+    drawTimeCounter();
+    drawScore();
+    drawDifficultyTier(); // Display current difficulty tier
     drawAudioToggle();
+    drawHelpButton(); // Help toggle button
+    drawHelpPanel(); // Draw help panel if visible
 }
 
 
@@ -1126,12 +1648,14 @@ function movePlayer() {
     player.x += player.dx;
     if (player.x < 0) player.x = 0;
     if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+    // Prevent player from going into UI area
+    if (player.y < UI_HEIGHT) player.y = UI_HEIGHT;
 }
 
 function moveBullets() {
     for (let i = bullets.length - 1; i >= 0; i--) {
         bullets[i].y -= BULLET_SPEED;
-        if (bullets[i].y < 0) {
+        if (bullets[i].y < UI_HEIGHT) {
             bullets.splice(i, 1);
         }
     }
@@ -1141,24 +1665,34 @@ function moveEnemyBullets() {
     for (let i = enemyBullets.length - 1; i >= 0; i--) {
         enemyBullets[i].x += enemyBullets[i].dx;
         enemyBullets[i].y += enemyBullets[i].dy;
-        if (enemyBullets[i].y > canvas.height || enemyBullets[i].x < 0 || enemyBullets[i].x > canvas.width) {
+        if (enemyBullets[i].y > canvas.height || enemyBullets[i].y < UI_HEIGHT || enemyBullets[i].x < 0 || enemyBullets[i].x > canvas.width) {
             enemyBullets.splice(i, 1);
         }
     }
 }
 
 function moveEnemies() {
-    const speedMultiplier = 1 + (ENEMY_ROWS * ENEMY_COLS - enemies.length) * 0.05;
+    const baseSpeedMultiplier = 1 + (ENEMY_ROWS * ENEMY_COLS - enemies.length) * 0.05;
+    const adjustedSpeedMultiplier = baseSpeedMultiplier * (adjustedGameParams.enemyBaseSpeedMultiplier || 1.0);
+    const verticalDescent = adjustedGameParams.enemyVerticalDescent || 0.05;
+    const advanceSpeed = adjustedGameParams.enemyAdvanceSpeed || (ENEMY_HEIGHT / 4);
+    
     let hitEdge = false;
     enemies.forEach(enemy => {
-        enemy.x += enemySpeedDirection * speedMultiplier;
-        enemy.y += 0.05;
+        enemy.x += enemySpeedDirection * adjustedSpeedMultiplier;
+        enemy.y += verticalDescent;
+        // Prevent enemies from moving into UI area
+        if (enemy.y < UI_HEIGHT) enemy.y = UI_HEIGHT;
         if (enemy.x + enemy.width > canvas.width || enemy.x < 0) hitEdge = true;
     });
 
     if (hitEdge) {
         enemySpeedDirection *= -1;
-        enemies.forEach(enemy => enemy.y += ENEMY_HEIGHT / 4);
+        enemies.forEach(enemy => {
+            enemy.y += advanceSpeed;
+            // Ensure enemies don't end up in UI area after moving down
+            if (enemy.y < UI_HEIGHT) enemy.y = UI_HEIGHT;
+        });
     }
 }
 
@@ -1180,7 +1714,8 @@ function detectCollisions() {
         const bullet = bullets[bulletIndex];
         for (let enemyIndex = enemies.length - 1; enemyIndex >= 0; enemyIndex--) {
             const enemy = enemies[enemyIndex];
-            const height = intensitySpikeActive ? 40 : enemy.height;
+            const sizeBonus = intensitySpikeActive ? (adjustedGameParams.intensitySpikeEnemySizeBonus || 8) : 0;
+            const height = enemy.height + sizeBonus;
 
             if (bullet.x > enemy.x && bullet.x < enemy.x + enemy.width &&
                 bullet.y > enemy.y && bullet.y < enemy.y + height) {
@@ -1196,10 +1731,13 @@ function detectCollisions() {
                 } else {
                     // Enemy destroyed
                     playSound('enemyDestroy');
+                    totalEnemiesKilled++; // Track kills
 
-                    // Spawn powerup chance when enemy dies (level-balanced)
+                    // Spawn powerup chance when enemy dies (level-balanced with difficulty adjustment)
                     const balance = LEVEL_BALANCE[currentLevel];
-                    if (Math.random() < balance.dropChance) {
+                    const dropMultiplier = adjustedGameParams.powerupDropMultiplier || 1.0;
+                    const adjustedDropChance = balance.dropChance * dropMultiplier;
+                    if (Math.random() < adjustedDropChance) {
                         // Determine powerup type based on level weights
                         const rand = Math.random();
                         let powerupType;
@@ -1234,7 +1772,8 @@ function detectCollisions() {
             // Main grenade hits enemy and explodes
             for (let enemyIndex = enemies.length - 1; enemyIndex >= 0; enemyIndex--) {
                 const enemy = enemies[enemyIndex];
-                const height = intensitySpikeActive ? 40 : enemy.height;
+                const sizeBonus = intensitySpikeActive ? (adjustedGameParams.intensitySpikeEnemySizeBonus || 8) : 0;
+            const height = enemy.height + sizeBonus;
 
                 if (grenade.x > enemy.x && grenade.x < enemy.x + enemy.width &&
                     grenade.y > enemy.y && grenade.y < enemy.y + height) {
@@ -1247,7 +1786,8 @@ function detectCollisions() {
             // Fragment hits and damages enemy
             for (let enemyIndex = enemies.length - 1; enemyIndex >= 0; enemyIndex--) {
                 const enemy = enemies[enemyIndex];
-                const height = intensitySpikeActive ? 40 : enemy.height;
+                const sizeBonus = intensitySpikeActive ? (adjustedGameParams.intensitySpikeEnemySizeBonus || 8) : 0;
+            const height = enemy.height + sizeBonus;
 
                 if (grenade.x > enemy.x && grenade.x < enemy.x + enemy.width &&
                     grenade.y > enemy.y && grenade.y < enemy.y + height) {
@@ -1260,6 +1800,7 @@ function detectCollisions() {
                     } else {
                         // Enemy destroyed
                         playSound('enemyDestroy');
+                        totalEnemiesKilled++; // Track kills
 
                         // Spawn powerup chance when enemy dies
                         const balance = LEVEL_BALANCE[currentLevel];
@@ -1316,10 +1857,22 @@ function detectCollisions() {
             } else {
                 // Level 2+: Damage shield first, then hull
                 if (player.shield > 0) {
-                    player.shield = Math.max(0, player.shield - ENEMY_BULLET_DAMAGE);
+                    const shieldBefore = player.shield;
+                    const damage = adjustedGameParams.enemyBulletDamage || ENEMY_BULLET_DAMAGE;
+                    player.shield = Math.max(0, player.shield - damage);
+                    player.shieldHitTime = Date.now(); // Record hit time for visual flash
                     playSound('shieldHit');
                     console.log('Shield hit! Shield now:', player.shield); // Debug
+
+                    // If shield was depleted by this hit, also damage hull
+                    if (player.shield === 0 && shieldBefore < damage) {
+                        player.lives--;
+                        playSound('hullHit');
+                        console.log('Shield depleted + Hull hit! Lives now:', player.lives); // Debug
+                        player.x = canvas.width / 2 - PLAYER_WIDTH / 2;
+                    }
                 } else {
+                    // No shield - direct hull damage
                     player.lives--;
                     playSound('hullHit');
                     console.log('Hull hit! Lives now:', player.lives); // Debug
@@ -1362,9 +1915,11 @@ function detectCollisions() {
 }
 
 function enemyShoot() {
-    // Apply level-specific shooting intensity
+    // Apply level-specific shooting intensity and difficulty adjustments
     const balance = LEVEL_BALANCE[currentLevel];
-    const levelAdjustedChance = ENEMY_SHOOT_CHANCE * strikeVolumeMultiplier * balance.shootingIntensity;
+    const baseShootChance = adjustedGameParams.enemyShootChance || ENEMY_SHOOT_CHANCE;
+    const intensityMultiplier = adjustedGameParams.levelShootingIntensityMultiplier || 1.0;
+    const levelAdjustedChance = baseShootChance * strikeVolumeMultiplier * balance.shootingIntensity * intensityMultiplier;
 
     if (Math.random() < levelAdjustedChance && enemies.length > 0) {
         const frontlineEnemies = {};
@@ -1381,7 +1936,8 @@ function enemyShoot() {
             const dx = (player.x + player.width / 2) - (shooter.x + shooter.width / 2);
             const dy = player.y - (shooter.y + shooterHeight);
             const dist = Math.sqrt(dx * dx + dy * dy);
-            enemyBullets.push({ x: shooter.x + shooter.width / 2, y: shooter.y + shooterHeight, dx: (dx / dist) * ENEMY_BULLET_SPEED, dy: (dy / dist) * ENEMY_BULLET_SPEED });
+            const bulletSpeed = adjustedGameParams.enemyBulletSpeed || ENEMY_BULLET_SPEED;
+            enemyBullets.push({ x: shooter.x + shooter.width / 2, y: shooter.y + shooterHeight, dx: (dx / dist) * bulletSpeed, dy: (dy / dist) * bulletSpeed });
         }
     }
 }
@@ -1389,15 +1945,19 @@ function enemyShoot() {
 function updateGameState(now) {
     const elapsedTime = (now - gameStartTime) / 1000;
 
-    // Intensity spike system
+    // Intensity spike system (with difficulty adjustments)
     if (intensitySpikeActive) {
         if (now > intensitySpikeEndTime) {
             intensitySpikeActive = false;
-            nextIntensitySpikeTime = now + 5000 + Math.random() * 5000;
+            const intervalMin = adjustedGameParams.intensitySpikeIntervalMin || 5000;
+            const intervalMax = adjustedGameParams.intensitySpikeIntervalMax || 10000;
+            nextIntensitySpikeTime = now + intervalMin + Math.random() * (intervalMax - intervalMin);
         }
     } else if (now > nextIntensitySpikeTime) {
         intensitySpikeActive = true;
-        intensitySpikeEndTime = now + 2000 + Math.random() * 3000;
+        const durationMultiplier = adjustedGameParams.intensitySpikeDurationMultiplier || 1.0;
+        const baseDuration = 2000 + Math.random() * 3000;
+        intensitySpikeEndTime = now + (baseDuration * durationMultiplier);
     }
     strikeVolumeMultiplier = intensitySpikeActive ? 5 : 1 + (elapsedTime * 0.01);
 
@@ -1452,6 +2012,7 @@ function updateGameState(now) {
 let levelTransitioning = false;
 let gameOverSoundPlayed = false;
 let victorySoundPlayed = false;
+let scoreSaved = false; // Track if score has been saved
 
 function update() {
     const now = Date.now();
@@ -1459,21 +2020,106 @@ function update() {
     // Game Over check
     if (player.lives <= 0) {
         if (!gameOverSoundPlayed) {
+            // Calculate final level score before showing game over
+            const levelTime = (now - levelStartTime) / 1000;
+            const levelEnemiesKilled = initialEnemyCount - enemies.length;
+            const levelScore = calculateLevelScore(levelTime, levelAmmoUsed, levelEnemiesKilled, initialEnemyCount);
+            totalScore += levelScore;
+            
             playSound('gameOver');
             gameOverSoundPlayed = true;
+            
+            // Save score to Firebase - only if minimum gameplay requirements met
+            const totalTime = (now - gameStartTime) / 1000;
+            const minGameplayMet = (totalEnemiesKilled > 0 || totalTime >= 30) && totalScore > 0; // Must kill at least 1 enemy OR survive 30+ seconds AND have a positive score
+            
+            if (!scoreSaved && typeof window !== 'undefined' && window.currentUser && typeof saveScore !== 'undefined' && minGameplayMet) {
+                scoreSaved = true; // Set flag to prevent multiple saves
+                console.log('Attempting to save score:', {
+                    name: window.currentUser.name,
+                    email: window.currentUser.email,
+                    score: totalScore,
+                    level: currentLevel,
+                    time: totalTime,
+                    ammo: totalAmmoUsed,
+                    enemiesKilled: totalEnemiesKilled
+                });
+                
+                saveScore(
+                    window.currentUser.name,
+                    window.currentUser.email,
+                    totalScore,
+                    currentLevel,
+                    totalTime,
+                    totalAmmoUsed
+                ).then(result => {
+                    if (result.success) {
+                        console.log('✅ Score saved successfully to Firebase');
+                        window.lastScoreSaveSuccess = true;
+                        
+                        // Update difficulty profile after game
+                        updateDifficultyAfterGame({
+                            score: totalScore,
+                            level: currentLevel,
+                            timeSeconds: totalTime,
+                            enemiesKilled: totalEnemiesKilled,
+                            won: false,
+                            ammoUsed: totalAmmoUsed
+                        });
+                    } else {
+                        console.error('❌ Failed to save score:', result.message);
+                        window.lastScoreSaveSuccess = false;
+                        window.lastScoreSaveError = result.message;
+                    }
+                }).catch(error => {
+                    console.error('❌ Error saving score:', error);
+                    window.lastScoreSaveSuccess = false;
+                    window.lastScoreSaveError = error.message;
+                });
+            } else if (!minGameplayMet) {
+                // Show message that score wasn't saved due to insufficient gameplay
+                console.log('Score not saved: Insufficient gameplay (must kill at least 1 enemy or survive 30+ seconds)');
+                window.lastScoreSaveSuccess = false;
+                window.scoreNotSavedReason = 'Insufficient gameplay';
+            }
         }
         drawBackground();
         ctx.fillStyle = 'red';
         ctx.font = '50px "Courier New"';
         ctx.textAlign = "center";
-        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2);
+        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 60);
         ctx.font = '20px "Courier New"';
-        ctx.fillText(`Final Level: ${currentLevel}`, canvas.width / 2, canvas.height / 2 + 40);
+        ctx.fillText(`Final Level: ${currentLevel}`, canvas.width / 2, canvas.height / 2 - 30);
+        const totalTime = Math.floor((now - gameStartTime) / 1000);
+        ctx.fillText(`Time: ${totalTime}s | Kills: ${totalEnemiesKilled} | Ammo: ${totalAmmoUsed}`, canvas.width / 2, canvas.height / 2 + 10);
+        ctx.fillStyle = '#FFD700';
+        ctx.fillText(`FINAL SCORE: ${totalScore}`, canvas.width / 2, canvas.height / 2 + 40);
+        ctx.font = '14px "Courier New"';
+        if (window.scoreNotSavedReason === 'Insufficient gameplay') {
+            ctx.fillStyle = '#FFA500';
+            ctx.fillText('Score not saved - play longer or kill enemies!', canvas.width / 2, canvas.height / 2 + 70);
+        } else if (scoreSaved && window.lastScoreSaveSuccess === true) {
+            ctx.fillStyle = '#00FF00';
+            ctx.fillText('Score saved!', canvas.width / 2, canvas.height / 2 + 70);
+        } else if (scoreSaved && window.lastScoreSaveSuccess === false) {
+            ctx.fillStyle = '#FF0000';
+            ctx.fillText('Save failed - check console', canvas.width / 2, canvas.height / 2 + 70);
+        } else if (scoreSaved) {
+            ctx.fillStyle = '#888';
+            ctx.fillText('Saving score...', canvas.width / 2, canvas.height / 2 + 70);
+        }
         return;
     }
 
     // Level cleared check
     if (enemies.length === 0 && !levelTransitioning) {
+        // Calculate and add level score before transitioning
+        const now = Date.now();
+        const levelTime = (now - levelStartTime) / 1000;
+        const levelEnemiesKilled = initialEnemyCount - enemies.length;
+        const levelScore = calculateLevelScore(levelTime, levelAmmoUsed, levelEnemiesKilled, initialEnemyCount);
+        totalScore += levelScore;
+        
         if (currentLevel < 3) {
             // Next level
             levelTransitioning = true;
@@ -1482,8 +2128,9 @@ function update() {
             ctx.fillStyle = '#00FF00';
             ctx.font = '40px "Courier New"';
             ctx.textAlign = "center";
-            ctx.fillText(`LEVEL ${currentLevel} CLEARED!`, canvas.width / 2, canvas.height / 2 - 20);
+            ctx.fillText(`LEVEL ${currentLevel} CLEARED!`, canvas.width / 2, canvas.height / 2 - 60);
             ctx.font = '20px "Courier New"';
+            ctx.fillText(`Time: ${Math.floor(levelTime)}s | Ammo: ${levelAmmoUsed} | Score: ${levelScore}`, canvas.width / 2, canvas.height / 2 - 30);
             ctx.fillText("Loading next level...", canvas.width / 2, canvas.height / 2 + 20);
 
             // Progress to next level after delay
@@ -1492,9 +2139,14 @@ function update() {
                 bullets = [];
                 enemyBullets = [];
                 powerups = [];
+                
+                // Reset level counters
+                levelStartTime = Date.now();
+                levelAmmoUsed = 0;
+                // Note: totalEnemiesKilled persists across levels
 
                 // Activate shields for Level 2+
-                if (currentLevel === 2) {
+                if (currentLevel >= 2) {
                     player.shield = player.maxShield;
                 }
 
@@ -1511,14 +2163,75 @@ function update() {
             if (!victorySoundPlayed) {
                 playSound('victory');
                 victorySoundPlayed = true;
+                
+                // Save score to Firebase
+                if (!scoreSaved && typeof window !== 'undefined' && window.currentUser && typeof saveScore !== 'undefined') {
+                    scoreSaved = true; // Set flag to prevent multiple saves
+                    const totalTime = (now - gameStartTime) / 1000;
+                    console.log('Attempting to save score:', {
+                        name: window.currentUser.name,
+                        email: window.currentUser.email,
+                        score: totalScore,
+                        level: 3,
+                        time: totalTime,
+                        ammo: totalAmmoUsed
+                    });
+                    
+                    saveScore(
+                        window.currentUser.name,
+                        window.currentUser.email,
+                        totalScore,
+                        3, // All levels completed
+                        totalTime,
+                        totalAmmoUsed
+                    ).then(result => {
+                        if (result.success) {
+                            console.log('✅ Score saved successfully to Firebase');
+                            window.lastScoreSaveSuccess = true;
+                            
+                            // Update difficulty profile after victory
+                            updateDifficultyAfterGame({
+                                score: totalScore,
+                                level: 3,
+                                timeSeconds: totalTime,
+                                enemiesKilled: totalEnemiesKilled,
+                                won: true,
+                                ammoUsed: totalAmmoUsed
+                            });
+                        } else {
+                            console.error('❌ Failed to save score:', result.message);
+                            window.lastScoreSaveSuccess = false;
+                            window.lastScoreSaveError = result.message;
+                        }
+                    }).catch(error => {
+                        console.error('❌ Error saving score:', error);
+                        window.lastScoreSaveSuccess = false;
+                        window.lastScoreSaveError = error.message;
+                    });
+                }
             }
             drawBackground();
             ctx.fillStyle = '#FFD700';
             ctx.font = '50px "Courier New"';
             ctx.textAlign = "center";
-            ctx.fillText("VICTORY!", canvas.width / 2, canvas.height / 2);
+            ctx.fillText("VICTORY!", canvas.width / 2, canvas.height / 2 - 60);
             ctx.font = '20px "Courier New"';
+            ctx.fillText(`Final Time: ${Math.floor(levelTime)}s | Total Ammo: ${totalAmmoUsed}`, canvas.width / 2, canvas.height / 2 - 30);
+            ctx.fillText(`FINAL SCORE: ${totalScore}`, canvas.width / 2, canvas.height / 2 + 10);
             ctx.fillText("All levels completed!", canvas.width / 2, canvas.height / 2 + 40);
+            if (scoreSaved) {
+                ctx.font = '14px "Courier New"';
+                if (window.lastScoreSaveSuccess === true) {
+                    ctx.fillStyle = '#00FF00';
+                    ctx.fillText('Score saved!', canvas.width / 2, canvas.height / 2 + 70);
+                } else if (window.lastScoreSaveSuccess === false) {
+                    ctx.fillStyle = '#FF0000';
+                    ctx.fillText('Save failed - check console', canvas.width / 2, canvas.height / 2 + 70);
+                } else {
+                    ctx.fillStyle = '#888';
+                    ctx.fillText('Saving score...', canvas.width / 2, canvas.height / 2 + 70);
+                }
+            }
             return;
         }
     }
@@ -1580,6 +2293,9 @@ function keyDown(e) {
     } else if (e.key === 'm' || e.key === 'M') {
         toggleAudio();
         playSound('powerup'); // Test sound when toggling on
+    } else if (e.key === 'h' || e.key === 'H') {
+        showHelp = !showHelp;
+        e.preventDefault();
     }
 }
 
@@ -1649,6 +2365,11 @@ function shoot() {
 
         player.lastShotTime = now;
         bullets.push({ x: player.x + player.width / 2, y: player.y });
+        
+        // Track ammo usage
+        totalAmmoUsed++;
+        levelAmmoUsed++;
+        
         playSound('playerShoot');
     }
 }
@@ -1676,10 +2397,10 @@ function moveGrenades() {
             grenade.y -= GRENADE_SPEED;
 
             // Check for explosion conditions
-            // 1. Reached top of screen
-            // 2. Reached explosion altitude (y < 100)
+            // 1. Reached top of screen (UI area boundary)
+            // 2. Reached explosion altitude (y < UI_HEIGHT + 100)
             // 3. Hit an enemy (checked in collision detection)
-            if (grenade.y < 100 || grenade.y < 0) {
+            if (grenade.y < UI_HEIGHT + 100 || grenade.y < UI_HEIGHT) {
                 explodeGrenade(grenade, i);
             }
         } else if (grenade.type === 'fragment') {
@@ -1687,9 +2408,9 @@ function moveGrenades() {
             grenade.x += grenade.dx;
             grenade.y += grenade.dy;
 
-            // Remove fragments that go off screen
+            // Remove fragments that go off screen or into UI area
             if (grenade.x < 0 || grenade.x > canvas.width ||
-                grenade.y < 0 || grenade.y > canvas.height) {
+                grenade.y < UI_HEIGHT || grenade.y > canvas.height) {
                 grenades.splice(i, 1);
             }
         }
@@ -1726,11 +2447,284 @@ function explodeGrenade(grenade, grenadeIndex) {
 }
 
 
+// --- ADAPTIVE DIFFICULTY SYSTEM ---
+
+// Apply difficulty adjustments to game parameters
+function applyDifficultyAdjustments(multiplier) {
+    difficultyMultiplier = multiplier;
+    adjustedGameParams = {};
+    
+    // Enemy shooting adjustments
+    adjustedGameParams.enemyShootChance = ENEMY_SHOOT_CHANCE * (1.0 + multiplier * 0.5);
+    
+    // Enemy movement adjustments
+    adjustedGameParams.enemyBaseSpeedMultiplier = 1.0 + multiplier * 0.3;
+    adjustedGameParams.enemyVerticalDescent = 0.05 * (1.0 + multiplier * 0.5);
+    adjustedGameParams.enemyAdvanceSpeed = (ENEMY_HEIGHT / 4) * (1.0 + multiplier * 0.3);
+    
+    // Enemy bullet adjustments
+    adjustedGameParams.enemyBulletSpeed = ENEMY_BULLET_SPEED * (1.0 + multiplier * 0.4);
+    adjustedGameParams.enemyBulletDamage = ENEMY_BULLET_DAMAGE * (1.0 + multiplier * 0.5);
+    
+    // Sentinel shield adjustments (more hits = harder)
+    adjustedGameParams.sentinelShieldHits = 2 + Math.floor(multiplier * 0.5);
+    
+    // Player weapon adjustments (harder = more heat, slower cooling)
+    adjustedGameParams.heatPerShot = 8 * (1.0 + multiplier * 0.25);
+    adjustedGameParams.heatDissipationRate = 0.5 * (1.0 - multiplier * 0.2);
+    adjustedGameParams.heatDissipationDelay = 500 * (1.0 + multiplier * 0.5);
+    adjustedGameParams.lockoutDuration = 3000 * (1.0 + multiplier * 0.3);
+    adjustedGameParams.shootCooldown = 200 * (1.0 + multiplier * 0.2);
+    
+    // Player shield adjustments (harder = slower recharge)
+    adjustedGameParams.shieldRechargeRate = 0.05 * (1.0 - multiplier * 0.3);
+    adjustedGameParams.maxShield = Math.max(80, 100 - Math.floor(multiplier * 5));
+    
+    // Player movement (slight reduction)
+    adjustedGameParams.playerSpeed = PLAYER_SPEED * (1.0 - multiplier * 0.15);
+    
+    // Starting resources (only at very high difficulty)
+    if (multiplier > 1.5) {
+        adjustedGameParams.startingLives = 2;
+        adjustedGameParams.startingGrenades = 0;
+    } else {
+        adjustedGameParams.startingLives = 3;
+        adjustedGameParams.startingGrenades = 1;
+    }
+    
+    // Powerup adjustments (fewer drops)
+    adjustedGameParams.powerupDropMultiplier = 1.0 - multiplier * 0.3;
+    
+    // Intensity spike adjustments
+    adjustedGameParams.intensitySpikeIntervalMin = 5000 * (1.0 - multiplier * 0.3);
+    adjustedGameParams.intensitySpikeIntervalMax = 10000 * (1.0 - multiplier * 0.3);
+    adjustedGameParams.intensitySpikeDurationMultiplier = 1.0 + multiplier * 0.3;
+    adjustedGameParams.intensitySpikeEnemySizeBonus = 8 * (1.0 + multiplier * 0.5);
+    
+    // Enemy count adjustments (more enemies)
+    adjustedGameParams.enemyCountMultiplier = 1.0 + multiplier * 0.3;
+    adjustedGameParams.enemyGap = Math.max(10, ENEMY_GAP - multiplier * 1.0);
+    
+    // Level shooting intensity multiplier
+    adjustedGameParams.levelShootingIntensityMultiplier = 1.0 + multiplier * 0.4;
+    
+    console.log(`🎯 Applied difficulty multiplier: ${multiplier.toFixed(2)} (${getDifficultyTierName(multiplier)})`);
+    
+    // Log all adjusted parameters
+    logDifficultyParameters(multiplier);
+}
+
+// Log all difficulty parameters for a user
+function logDifficultyParameters(multiplier) {
+    if (!window.currentUser) return;
+    
+    const user = window.currentUser.email || 'unknown';
+    const tier = getDifficultyTierName(multiplier);
+    
+    console.group(`📊 DIFFICULTY PARAMETERS - ${user} (${tier} - ${multiplier.toFixed(2)}x)`);
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🎯 ENEMY BEHAVIOR');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`  Shooting Chance:       ${adjustedGameParams.enemyShootChance.toFixed(6)} (base: ${ENEMY_SHOOT_CHANCE})`);
+    console.log(`  Bullet Speed:          ${adjustedGameParams.enemyBulletSpeed.toFixed(2)} (base: ${ENEMY_BULLET_SPEED})`);
+    console.log(`  Bullet Damage:         ${adjustedGameParams.enemyBulletDamage.toFixed(1)} (base: ${ENEMY_BULLET_DAMAGE})`);
+    console.log(`  Movement Speed:        ${adjustedGameParams.enemyBaseSpeedMultiplier.toFixed(2)}x`);
+    console.log(`  Vertical Descent:      ${adjustedGameParams.enemyVerticalDescent.toFixed(4)} (base: 0.05)`);
+    console.log(`  Advance Speed:         ${adjustedGameParams.enemyAdvanceSpeed.toFixed(2)} (base: ${ENEMY_HEIGHT / 4})`);
+    console.log(`  Sentinel Shield Hits:  ${adjustedGameParams.sentinelShieldHits} (base: 2-3)`);
+    console.log(`  Enemy Count Multiplier: ${adjustedGameParams.enemyCountMultiplier.toFixed(2)}x`);
+    console.log(`  Enemy Gap:             ${adjustedGameParams.enemyGap.toFixed(1)} (base: ${ENEMY_GAP})`);
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('⚔️  PLAYER WEAPON SYSTEM');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`  Heat Per Shot:         ${adjustedGameParams.heatPerShot.toFixed(2)} (base: 8)`);
+    console.log(`  Heat Dissipation Rate: ${adjustedGameParams.heatDissipationRate.toFixed(3)} (base: 0.5)`);
+    console.log(`  Heat Dissipation Delay: ${adjustedGameParams.heatDissipationDelay.toFixed(0)}ms (base: 500ms)`);
+    console.log(`  Lockout Duration:      ${adjustedGameParams.lockoutDuration.toFixed(0)}ms (base: 3000ms)`);
+    console.log(`  Shoot Cooldown:        ${adjustedGameParams.shootCooldown.toFixed(0)}ms (base: 200ms)`);
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🛡️  PLAYER SHIELD SYSTEM');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`  Max Shield:            ${adjustedGameParams.maxShield} (base: 100)`);
+    console.log(`  Shield Recharge Rate:  ${adjustedGameParams.shieldRechargeRate.toFixed(4)} (base: 0.05)`);
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🏃 PLAYER MOVEMENT');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`  Player Speed:          ${adjustedGameParams.playerSpeed.toFixed(2)} (base: ${PLAYER_SPEED})`);
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('💎 RESOURCES & POWERUPS');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`  Starting Lives:        ${adjustedGameParams.startingLives} (base: 3)`);
+    console.log(`  Starting Grenades:     ${adjustedGameParams.startingGrenades} (base: 1)`);
+    console.log(`  Powerup Drop Rate:     ${(adjustedGameParams.powerupDropMultiplier * 100).toFixed(1)}% (100% = base)`);
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('⚡ INTENSITY SPIKES');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`  Spike Interval:        ${adjustedGameParams.intensitySpikeIntervalMin.toFixed(0)}-${adjustedGameParams.intensitySpikeIntervalMax.toFixed(0)}ms (base: 5000-10000ms)`);
+    console.log(`  Spike Duration:        ${adjustedGameParams.intensitySpikeDurationMultiplier.toFixed(2)}x`);
+    console.log(`  Enemy Size Bonus:      +${adjustedGameParams.intensitySpikeEnemySizeBonus.toFixed(1)}px (base: +8px)`);
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('📈 LEVEL MODIFIERS');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`  Shooting Intensity:    ${adjustedGameParams.levelShootingIntensityMultiplier.toFixed(2)}x multiplier`);
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.groupEnd();
+}
+
+// Get difficulty tier name
+function getDifficultyTierName(multiplier) {
+    if (multiplier < 1.0) return "Beginner";
+    if (multiplier < 1.3) return "Normal";
+    if (multiplier < 1.6) return "Advanced";
+    if (multiplier < 2.0) return "Expert";
+    return "Master";
+}
+
+// Apply adjusted parameters to player object
+function applyPlayerDifficulty() {
+    if (!adjustedGameParams.heatPerShot) return; // Not initialized yet
+    
+    player.heatPerShot = adjustedGameParams.heatPerShot;
+    player.heatDissipationRate = adjustedGameParams.heatDissipationRate;
+    player.heatDissipationDelay = adjustedGameParams.heatDissipationDelay;
+    player.lockoutDuration = adjustedGameParams.lockoutDuration;
+    player.shootCooldown = adjustedGameParams.shootCooldown;
+    player.shieldRechargeRate = adjustedGameParams.shieldRechargeRate;
+    player.maxShield = adjustedGameParams.maxShield;
+    player.shield = Math.min(player.shield, player.maxShield);
+    player.speed = adjustedGameParams.playerSpeed;
+    player.lives = adjustedGameParams.startingLives;
+    player.maxLives = adjustedGameParams.startingLives;
+    player.grenades = adjustedGameParams.startingGrenades;
+}
+
+// Load player difficulty profile and apply adjustments
+async function loadAndApplyDifficulty() {
+    if (!window.currentUser || typeof window.difficultyManager === 'undefined') {
+        console.log('⚠️ No user or difficulty manager available, using default difficulty');
+        applyDifficultyAdjustments(1.0);
+        applyPlayerDifficulty();
+        return;
+    }
+    
+    try {
+        const profile = await window.difficultyManager.getPlayerDifficultyProfile(
+            window.currentUser.email,
+            window.currentUser.name
+        );
+        
+        if (profile) {
+            playerDifficultyProfile = profile;
+            const multiplier = profile.difficultyMultiplier || 1.0;
+            applyDifficultyAdjustments(multiplier);
+            applyPlayerDifficulty();
+            
+            console.log(`📊 Player difficulty: ${multiplier.toFixed(2)} (${profile.difficultyTier || getDifficultyTierName(multiplier)})`);
+            
+            // Log detailed profile metrics
+            if (typeof window.difficultyManager !== 'undefined' && window.difficultyManager.logPlayerProfileMetrics) {
+                window.difficultyManager.logPlayerProfileMetrics(profile);
+            }
+        } else {
+            // Default difficulty
+            applyDifficultyAdjustments(1.0);
+            applyPlayerDifficulty();
+        }
+    } catch (error) {
+        console.error('❌ Error loading difficulty profile:', error);
+        // Fallback to default
+        applyDifficultyAdjustments(1.0);
+        applyPlayerDifficulty();
+    }
+}
+
+// Update player profile after game ends
+async function updateDifficultyAfterGame(gameResult) {
+    if (!window.currentUser || typeof window.difficultyManager === 'undefined') {
+        console.log('⚠️ Cannot update difficulty: no user or difficulty manager');
+        return;
+    }
+    
+    try {
+        const updatedProfile = await window.difficultyManager.updatePlayerProfileAfterGame(
+            window.currentUser.email,
+            window.currentUser.name,
+            gameResult
+        );
+        
+        if (updatedProfile) {
+            playerDifficultyProfile = updatedProfile;
+            console.log(`📊 Updated difficulty profile. New multiplier: ${updatedProfile.difficultyMultiplier.toFixed(2)} (${updatedProfile.difficultyTier})`);
+        }
+    } catch (error) {
+        console.error('❌ Error updating difficulty profile:', error);
+    }
+}
+
 // --- START GAME ---
 console.log('Game starting...');
-createEnemies();
-gameStartTime = Date.now();
-nextIntensitySpikeTime = gameStartTime + 5000 + Math.random() * 5000;
+
+// Load and apply difficulty before initializing game
+loadAndApplyDifficulty().then(() => {
+    // Initialize shields if starting at Level 2+
+    if (currentLevel >= 2) {
+        player.shield = player.maxShield;
+        console.log('Shields activated for Level', currentLevel);
+    }
+
+    createEnemies();
+    gameStartTime = Date.now();
+    levelStartTime = Date.now(); // Initialize level start time
+    
+    // Set intensity spike timing with difficulty adjustments
+    const intervalMin = adjustedGameParams.intensitySpikeIntervalMin || 5000;
+    const intervalMax = adjustedGameParams.intensitySpikeIntervalMax || 10000;
+    nextIntensitySpikeTime = gameStartTime + intervalMin + Math.random() * (intervalMax - intervalMin);
+    
+    // Start game loop
+    update();
+});
+
+// Fallback: Start game if difficulty loading takes too long
+setTimeout(() => {
+    if (gameStartTime === 0) {
+        console.log('⚠️ Difficulty loading timeout, starting with default difficulty...');
+        applyDifficultyAdjustments(1.0);
+        applyPlayerDifficulty();
+        
+        if (currentLevel >= 2) {
+            player.shield = player.maxShield;
+        }
+        
+        createEnemies();
+        gameStartTime = Date.now();
+        levelStartTime = Date.now();
+        const intervalMin = adjustedGameParams.intensitySpikeIntervalMin || 5000;
+        const intervalMax = adjustedGameParams.intensitySpikeIntervalMax || 10000;
+        nextIntensitySpikeTime = gameStartTime + intervalMin + Math.random() * (intervalMax - intervalMin);
+        update();
+    }
+}, 2000); // 2 second timeout
+
+// Reset score tracking
+totalScore = 0;
+totalAmmoUsed = 0;
+totalEnemiesKilled = 0;
+levelAmmoUsed = 0;
+scoreSaved = false;
+gameOverSoundPlayed = false;
+victorySoundPlayed = false;
+window.lastScoreSaveSuccess = undefined;
+window.scoreNotSavedReason = undefined;
+
 console.log('Enemies created:', enemies.length);
 
 document.addEventListener('keydown', keyDown);

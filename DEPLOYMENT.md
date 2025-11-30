@@ -91,12 +91,35 @@ echo ".firebase/" >> .gitignore
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Allow read/write access to scores collection
+    match /scores/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    // Allow read/write access to users collection (for difficulty profiles)
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.resource.data.email == request.auth.token.email;
+    }
+    
+    // Legacy rule (if you had this before)
+    // Scores collection - for leaderboard
     match /scores/{document=**} {
       // Allow anyone to read scores (for leaderboard)
       allow read: if true;
       // Allow writes for authenticated users
       // For simple setup, allow all writes (adjust for production)
       allow write: if true;
+    }
+    
+    // Users collection - for adaptive difficulty profiles
+    match /users/{userId} {
+      // Users can read/write their own profile
+      // Simplified for trusted users - adjust for production
+      allow read: if true;
+      allow write: if true;
+      // For production: allow write: if request.resource.data.email == request.auth.token.email;
     }
   }
 }

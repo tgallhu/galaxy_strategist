@@ -1,28 +1,76 @@
 // Score management with Firebase Firestore
 
 // Initialize Firestore
+// Use window.db to share with other scripts
 let db = null;
+if (typeof window !== 'undefined') {
+    window.db = null; // Will be set when initialized
+}
 
 function initFirestore() {
+    console.log('🔧 initFirestore() called');
+    console.log('🔍 Checking firebase availability...');
+    console.log('   typeof firebase:', typeof firebase);
+
     if (typeof firebase === 'undefined') {
-        console.error('Firebase not loaded. Make sure firebase-config.js and Firebase SDK are included.');
+        console.error('❌ Firebase not loaded. Make sure firebase-config.js and Firebase SDK are included.');
         return false;
     }
-    
+
+    console.log('✅ firebase object exists');
+    console.log('🔍 Checking firebase.firestore...');
+    console.log('   typeof firebase.firestore:', typeof firebase.firestore);
+
+    if (typeof firebase.firestore !== 'function') {
+        console.error('❌ firebase.firestore is not available. Make sure Firestore SDK is loaded.');
+        return false;
+    }
+
     try {
-        db = firebase.firestore();
+        console.log('🔧 Calling firebase.firestore()...');
+        const firestoreInstance = firebase.firestore();
+        console.log('✅ firebase.firestore() returned:', firestoreInstance);
+        console.log('   Type:', typeof firestoreInstance);
+        console.log('   Has collection method:', typeof firestoreInstance?.collection);
+
+        db = firestoreInstance;
+        console.log('✅ db variable set to:', db);
+        console.log('   db is null?', db === null);
+        console.log('   db has collection?', typeof db?.collection);
+
+        // Store in window for sharing with other scripts
+        if (typeof window !== 'undefined') {
+            window.db = db;
+            console.log('✅ window.db set');
+        }
+
+        console.log('✅ Firestore initialized successfully');
         return true;
     } catch (e) {
-        console.error('Error initializing Firestore:', e);
+        console.error('❌ Error initializing Firestore:', e);
+        console.error('   Error name:', e.name);
+        console.error('   Error message:', e.message);
+        console.error('   Error stack:', e.stack);
         return false;
     }
 }
 
 // Save score to Firestore
 async function saveScore(name, email, score, level, timeSeconds, ammoUsed) {
+    console.log('🎯 saveScore() called');
+    console.log('   Current db value:', db);
+    console.log('   db is null?', db === null);
+    console.log('   db type:', typeof db);
+    console.log('   db has collection?', typeof db?.collection);
+
     if (!db) {
-        if (!initFirestore()) {
-            console.error('Cannot save score: Firestore not initialized');
+        console.log('⚠️ db is null, attempting to initialize Firestore...');
+        const initResult = initFirestore();
+        console.log('   initFirestore() returned:', initResult);
+        console.log('   db after init:', db);
+
+        if (!initResult) {
+            console.error('❌ Cannot save score: Firestore not initialized');
             return { success: false, message: 'Database not available' };
         }
     }

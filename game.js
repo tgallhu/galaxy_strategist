@@ -368,7 +368,7 @@ for (let layer = 0; layer < 3; layer++) {
 
 
 // --- GAME CONSTANTS ---
-const UI_HEIGHT = 100; // Height of UI area at top
+const UI_HEIGHT = 120; // Height of UI area at top (includes hull label and extra info)
 const PLAYER_WIDTH = 48; // Matched to sprite
 const PLAYER_HEIGHT = 48; // Matched to sprite
 const PLAYER_SPEED = 6.5; // Increased for smoother, more responsive control
@@ -427,7 +427,7 @@ let grenades = []; // Main grenades and fragments
 
 // Powerup constants
 const POWERUP_SIZE = 20;
-const POWERUP_FALL_SPEED = 2;
+const POWERUP_FALL_SPEED = 2; // Base fall speed (will be adjusted by difficulty)
 const ENEMY_BULLET_DAMAGE = 30;
 
 // Level-specific powerup drop rates and shooting intensity
@@ -465,6 +465,11 @@ let totalScore = 0; // Total score across all levels
 let totalEnemiesKilled = 0; // Track total enemies killed
 let initialEnemyCount = 0; // Track starting enemy count
 
+// Adaptive Difficulty System
+let difficultyMultiplier = 1.0; // Base difficulty
+let playerDifficultyProfile = null;
+let adjustedGameParams = {}; // Stores difficulty-adjusted parameters
+
 // Key state tracking for smoother controls
 const keys = {
     left: false,
@@ -473,11 +478,26 @@ const keys = {
     grenade: false
 };
 let showHelp = false; // Toggle help panel
+let showExtraInfo = false; // Toggle extra UI info (hidden key)
 let strikeVolumeMultiplier = 1;
 let intensitySpikeActive = false;
 let nextIntensitySpikeTime = 0;
 let intensitySpikeEndTime = 0;
-let currentLevel = 3;
+let currentLevel = 1;
+
+// Safety function to ensure we always start at Level 1
+function enforceLevel1() {
+    if (currentLevel !== 1) {
+        console.error(`❌ CRITICAL: currentLevel is ${currentLevel}, forcing to 1!`);
+        currentLevel = 1;
+    }
+    // Verify Level 1 exists
+    if (!LEVELS[1]) {
+        console.error('❌ CRITICAL: Level 1 definition missing!');
+        return false;
+    }
+    return true;
+}
 
 // --- LEVEL DEFINITIONS ---
 const LEVELS = {
@@ -516,26 +536,67 @@ const LEVELS = {
 
 // --- INITIALIZATION ---
 function createEnemies() {
+    // SAFETY CHECK: Force Level 1 if somehow currentLevel is wrong before game starts
+    if (currentLevel !== 1 && gameStartTime === 0) {
+        console.error(`❌ ERROR: createEnemies() called with currentLevel=${currentLevel} before game start! Forcing to 1.`);
+        currentLevel = 1;
+    }
+    
     enemies = [];
     const level = LEVELS[currentLevel];
+    
+    console.log(`🔍 createEnemies() called for Level ${currentLevel}`);
+    console.log(`🔍 Level definition exists:`, level ? 'YES' : 'NO');
+    if (level) {
+        console.log(`🔍 Level name: "${level.name}", formation: "${level.formation}"`);
+    }
 
-    switch (level.formation) {
-        case 'wall':
-            createWallFormation(level);
-            break;
-        case 'funnel':
-            createFunnelFormation(level);
-            break;
-        case 'citadel':
-            createCitadelFormation(level);
-            break;
-        default:
-            createWallFormation(level);
+    if (!level) {
+        console.error(`❌ ERROR: Level ${currentLevel} definition not found in LEVELS object!`);
+        console.error(`Available levels:`, Object.keys(LEVELS));
+        console.error(`Forcing to Level 1...`);
+        currentLevel = 1;
+        const level1 = LEVELS[1];
+        if (level1) {
+            createWallFormation(level1);
+        } else {
+            console.error(`❌ CRITICAL: Level 1 doesn't exist!`);
+            return;
+        }
+    } else {
+        switch (level.formation) {
+            case 'wall':
+                createWallFormation(level);
+                break;
+            case 'funnel':
+                createFunnelFormation(level);
+                break;
+            case 'citadel':
+                createCitadelFormation(level);
+                break;
+            default:
+                console.warn(`⚠️ Unknown formation "${level.formation}", using wall formation`);
+                createWallFormation(level);
+        }
     }
     
     // Set initial enemy count after enemies are created
     initialEnemyCount = enemies.length;
-    console.log(`Level ${currentLevel}: Created ${initialEnemyCount} enemies`);
+    const actualLevel = LEVELS[currentLevel];
+    console.log(`📍 Level ${currentLevel}: Created ${initialEnemyCount} enemies (${actualLevel ? actualLevel.name : 'UNKNOWN'})`);
+    
+    // Debug: Verify level configuration
+    if (!actualLevel) {
+        console.error(`❌ ERROR: Level ${currentLevel} definition not found after creation!`);
+        console.error(`Available levels:`, Object.keys(LEVELS));
+    } else {
+        console.log(`📍 Level ${currentLevel} config:`, {
+            name: actualLevel.name,
+            formation: actualLevel.formation,
+            expectedEnemies: actualLevel.enemyCount,
+            actualEnemies: initialEnemyCount
+        });
+    }
 }
 
 // Level 1: The Wall - Dense 5x10 rectangle
@@ -611,9 +672,9 @@ function createCitadelFormation(level) {
                 type: isSentinel ? 'sentinel' : 'normal'
             };
 
-            // Sentinel enemies have shields (3 hits to destroy)
+            // Sentinel enemies have shields (difficulty-adjusted hits to destroy)
             if (enemy.type === 'sentinel') {
-                enemy.shieldHits = 3;
+                enemy.shieldHits = adjustedGameParams.sentinelShieldHits || 3;
             }
 
             enemies.push(enemy);
@@ -767,71 +828,106 @@ function drawPlayer() {
 
 function drawEnemies() {
     enemies.forEach(enemy => {
-        const height = intensitySpikeActive ? 40 : enemy.height;
+        const sizeBonus = intensitySpikeActive ? (adjustedGameParams.intensitySpikeEnemySizeBonus || 8) : 0;
+        const height = enemy.height + sizeBonus;
 
-        // SENTINEL ENEMIES - Completely different design (Heavy Fortress)
+        // SENTINEL ENEMIES - Paper Ship Design (Origami Style)
         if (enemy.type === 'sentinel' && !intensitySpikeActive) {
-            // Main armored body - large fortified block
-            ctx.fillStyle = '#2A2A2A'; // Very dark gray
-            ctx.fillRect(enemy.x, enemy.y, enemy.width, height);
+            const centerX = enemy.x + enemy.width / 2;
 
-            // Armor plating panels
-            ctx.fillStyle = '#3C3C3C';
-            ctx.fillRect(enemy.x + 2, enemy.y + 2, enemy.width - 4, 6);
-            ctx.fillRect(enemy.x + 2, enemy.y + height - 8, enemy.width - 4, 6);
+            // Base paper color with subtle shading
+            const paperLight = '#E8E8E8';
+            const paperMid = '#CCCCCC';
+            const paperDark = '#999999';
+            const paperEdge = '#666666';
 
-            // Side armor plates
-            ctx.fillStyle = '#4A4A4A';
-            ctx.fillRect(enemy.x, enemy.y + 4, 4, height - 8);
-            ctx.fillRect(enemy.x + enemy.width - 4, enemy.y + 4, 4, height - 8);
+            // Main hull - triangular paper fold
+            ctx.fillStyle = paperMid;
+            ctx.fillRect(enemy.x + 8, enemy.y + 8, enemy.width - 16, height - 16);
 
-            // Weapon ports (dark slots)
-            ctx.fillStyle = '#0A0A0A';
-            ctx.fillRect(enemy.x + 10, enemy.y + 10, 6, 4);
-            ctx.fillRect(enemy.x + enemy.width - 16, enemy.y + 10, 6, 4);
+            // Bow (front point) - lightest fold
+            ctx.fillStyle = paperLight;
+            ctx.fillRect(centerX - 6, enemy.y, 12, 12);
+            ctx.fillRect(centerX - 4, enemy.y - 4, 8, 4);
+            ctx.fillRect(centerX - 2, enemy.y - 6, 4, 2);
 
-            // Turret/command module on top
-            ctx.fillStyle = '#505050';
-            const turretWidth = 16;
-            const turretHeight = 6;
-            ctx.fillRect(enemy.x + enemy.width/2 - turretWidth/2, enemy.y - 2, turretWidth, turretHeight);
+            // Side folds (left) - darker
+            ctx.fillStyle = paperDark;
+            ctx.fillRect(enemy.x + 4, enemy.y + 10, 8, height - 20);
+            ctx.fillRect(enemy.x, enemy.y + 14, 4, height - 28);
 
-            // Antenna/sensor array
-            ctx.fillStyle = '#FF4500';
-            ctx.fillRect(enemy.x + enemy.width/2 - 1, enemy.y - 4, 2, 2);
+            // Side folds (right) - darker
+            ctx.fillRect(enemy.x + enemy.width - 12, enemy.y + 10, 8, height - 20);
+            ctx.fillRect(enemy.x + enemy.width - 4, enemy.y + 14, 4, height - 28);
 
-            // Power core - centered, pulsing
-            const coreFlash = Math.sin(Date.now() / 150) > 0;
-            ctx.fillStyle = coreFlash ? '#FF0000' : '#FF6600'; // Red/Orange pulse
-            const coreSize = 10;
-            ctx.fillRect(
-                enemy.x + enemy.width / 2 - coreSize / 2,
-                enemy.y + height / 2 - coreSize / 2,
-                coreSize,
-                coreSize
-            );
+            // Center mast/fold line
+            ctx.fillStyle = paperEdge;
+            ctx.fillRect(centerX - 1, enemy.y + 4, 2, height - 12);
 
-            // Core inner glow
-            ctx.fillStyle = coreFlash ? '#FFFF00' : '#FFAA00';
-            ctx.fillRect(
-                enemy.x + enemy.width / 2 - 4,
-                enemy.y + height / 2 - 4,
-                8,
-                8
-            );
+            // Deck details (horizontal folds)
+            ctx.fillStyle = paperLight;
+            ctx.fillRect(enemy.x + 10, enemy.y + 14, enemy.width - 20, 3);
+            ctx.fillRect(enemy.x + 12, enemy.y + 20, enemy.width - 24, 2);
 
-            // Vents/exhausts at bottom
-            ctx.fillStyle = '#1A1A1A';
-            ctx.fillRect(enemy.x + 6, enemy.y + height - 4, 3, 4);
-            ctx.fillRect(enemy.x + enemy.width - 9, enemy.y + height - 4, 3, 4);
+            // Sail/flag markers (small triangles)
+            ctx.fillStyle = '#FF6666'; // Red flag accent
+            ctx.fillRect(centerX + 6, enemy.y + 8, 4, 2);
+            ctx.fillRect(centerX + 7, enemy.y + 10, 3, 2);
+            ctx.fillRect(centerX + 8, enemy.y + 12, 2, 2);
 
-            // Hazard stripes
-            ctx.fillStyle = '#FFAA00';
-            ctx.fillRect(enemy.x + 2, enemy.y + 2, 3, 2);
-            ctx.fillRect(enemy.x + enemy.width - 5, enemy.y + 2, 3, 2);
+            ctx.fillStyle = '#6666FF'; // Blue flag accent
+            ctx.fillRect(centerX - 10, enemy.y + 8, 4, 2);
+            ctx.fillRect(centerX - 10, enemy.y + 10, 3, 2);
+            ctx.fillRect(centerX - 10, enemy.y + 12, 2, 2);
+
+            // Paper crease lines (thin dark lines)
+            ctx.fillStyle = paperEdge;
+            ctx.fillRect(enemy.x + 12, enemy.y + 12, enemy.width - 24, 1);
+            ctx.fillRect(enemy.x + 14, enemy.y + 18, enemy.width - 28, 1);
+
+            // Stern (back) - shadow
+            ctx.fillStyle = paperDark;
+            ctx.fillRect(enemy.x + 10, enemy.y + height - 10, enemy.width - 20, 6);
+            ctx.fillRect(enemy.x + 12, enemy.y + height - 4, enemy.width - 24, 3);
+
+        } else if (currentLevel === 1) {
+            // LEVEL 1 ENEMIES - Simple alien creatures
+            const bodyColor = intensitySpikeActive ? '#FF0000' : '#00CC00';
+
+            // Main body (rounded rectangle)
+            ctx.fillStyle = bodyColor;
+            ctx.fillRect(enemy.x + 6, enemy.y + 8, enemy.width - 12, height - 12);
+
+            // Head/top part
+            ctx.fillRect(enemy.x + 8, enemy.y + 4, enemy.width - 16, 8);
+
+            // Eye (large, centered)
+            ctx.fillStyle = '#FFFFFF';
+            const eyeSize = 10;
+            ctx.fillRect(enemy.x + enemy.width/2 - eyeSize/2, enemy.y + 10, eyeSize, eyeSize);
+
+            // Pupil
+            ctx.fillStyle = '#000000';
+            const pupilSize = 4;
+            ctx.fillRect(enemy.x + enemy.width/2 - pupilSize/2, enemy.y + 13, pupilSize, pupilSize);
+
+            // Legs (bottom appendages)
+            ctx.fillStyle = '#006600';
+            // Left leg
+            ctx.fillRect(enemy.x + 8, enemy.y + height - 4, 4, 6);
+            ctx.fillRect(enemy.x + 6, enemy.y + height + 2, 6, 2);
+
+            // Right leg
+            ctx.fillRect(enemy.x + enemy.width - 12, enemy.y + height - 4, 4, 6);
+            ctx.fillRect(enemy.x + enemy.width - 12, enemy.y + height + 2, 6, 2);
+
+            // Body details (belly/stripes)
+            ctx.fillStyle = '#009900';
+            ctx.fillRect(enemy.x + 10, enemy.y + 14, enemy.width - 20, 3);
+            ctx.fillRect(enemy.x + 10, enemy.y + 19, enemy.width - 20, 3);
 
         } else {
-            // NORMAL ENEMIES - 3 different variants
+            // LEVEL 2+ ENEMIES - 3 different variants (detailed, animated)
             let color = intensitySpikeActive ? '#FF0000' : '#00FF00';
 
             // Determine enemy variant based on position
@@ -1132,7 +1228,7 @@ function drawHealthBar() {
     const heartSize = 20;
     const heartSpacing = 25;
     const startX = canvas.width - 10 - (player.lives * heartSpacing);
-    const startY = 10;
+    const startY = 50; // Moved down to avoid overlap with time counter
 
     for (let i = 0; i < player.lives; i++) {
         const x = startX + (i * heartSpacing);
@@ -1326,9 +1422,34 @@ function drawGrenadeCount() {
 function drawLevelDisplay() {
     const level = LEVELS[currentLevel];
     ctx.fillStyle = 'white';
-    ctx.font = '16px "Courier New"';
+    ctx.font = 'bold 20px "Courier New"';
     ctx.textAlign = "center";
+    
+    // Draw with shadow for visibility
+    ctx.fillStyle = '#000000';
+    ctx.fillText(`LEVEL ${currentLevel}: ${level.name}`, canvas.width / 2 + 2, 22);
+    ctx.fillStyle = '#FFFFFF';
     ctx.fillText(`LEVEL ${currentLevel}: ${level.name}`, canvas.width / 2, 20);
+}
+
+function drawDifficultyTier() {
+    if (!playerDifficultyProfile) return;
+    
+    const tier = playerDifficultyProfile.difficultyTier || getDifficultyTierName(difficultyMultiplier);
+    const multiplier = difficultyMultiplier || 1.0;
+    
+    // Color based on tier
+    let color = '#FFFFFF';
+    if (multiplier >= 2.0) color = '#FF0000'; // Master - Red
+    else if (multiplier >= 1.6) color = '#FF6600'; // Expert - Orange
+    else if (multiplier >= 1.3) color = '#FFAA00'; // Advanced - Yellow-Orange
+    else if (multiplier >= 1.0) color = '#00FF00'; // Normal - Green
+    else color = '#00FFFF'; // Beginner - Cyan
+    
+    ctx.fillStyle = color;
+    ctx.font = '12px "Courier New"';
+    ctx.textAlign = "left";
+    ctx.fillText(`DIFFICULTY: ${tier.toUpperCase()} (${multiplier.toFixed(2)}x)`, 10, 95);
 }
 
 function drawTimeCounter() {
@@ -1337,26 +1458,28 @@ function drawTimeCounter() {
     const minutes = Math.floor(elapsedSeconds / 60);
     const seconds = Math.floor(elapsedSeconds % 60);
     const milliseconds = Math.floor((elapsedSeconds % 1) * 100);
-    
+
     // Format time as MM:SS:MS
     const timeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}:${milliseconds.toString().padStart(2, '0')}`;
-    
+
     ctx.font = 'bold 18px "Courier New"';
-    ctx.textAlign = "center";
-    
-    // Draw with shadow for visibility
+    ctx.textAlign = "right";
+
+    // Draw with shadow for visibility (top-right corner)
     ctx.fillStyle = '#000000';
-    ctx.fillText(`TIME: ${timeString}`, canvas.width / 2 + 2, 45);
+    ctx.fillText(`TIME: ${timeString}`, canvas.width - 8, 22);
     ctx.fillStyle = '#00FFFF'; // Cyan color
-    ctx.fillText(`TIME: ${timeString}`, canvas.width / 2, 43);
+    ctx.fillText(`TIME: ${timeString}`, canvas.width - 10, 20);
 }
 
 function calculateLevelScore(timeSeconds, ammoUsed, enemiesKilled, totalEnemies) {
     // Score formula: Rewards actual gameplay
-    // Ensure we have valid inputs
-    const validTime = Math.max(0, timeSeconds || 0);
+    // Ensure we have valid inputs with reasonable limits
+    
+    // Cap time to prevent absurdly large scores (max 1 hour = 3600 seconds)
+    const validTime = Math.max(0, Math.min(timeSeconds || 0, 3600));
     const validAmmo = Math.max(0, ammoUsed || 0);
-    const validKills = Math.max(0, enemiesKilled || 0);
+    const validKills = Math.max(0, Math.min(enemiesKilled || 0, totalEnemies || 50));
     const validTotalEnemies = Math.max(1, totalEnemies || 50);
     
     // No score for instant deaths (< 3 seconds with no kills and no ammo)
@@ -1364,8 +1487,10 @@ function calculateLevelScore(timeSeconds, ammoUsed, enemiesKilled, totalEnemies)
         return 0;
     }
     
-    // Base points for survival (more time = better)
-    const survivalScore = validTime * 30; // 30 points per second
+    // Base points for survival (more time = better, but with diminishing returns)
+    // Cap survival score at reasonable maximum (600 seconds = 20 minutes max)
+    const survivalTime = Math.min(validTime, 600);
+    const survivalScore = survivalTime * 30; // 30 points per second, max 18,000
     
     // Points for enemies killed (most important - up to 8000 points)
     const killRatio = Math.min(1, validKills / validTotalEnemies); // 0 to 1
@@ -1384,31 +1509,47 @@ function calculateLevelScore(timeSeconds, ammoUsed, enemiesKilled, totalEnemies)
     // Small bonus for longer games (encourages survival)
     const timeBonus = validTime > 60 ? 500 : 0;
     
-    // Calculate final score
+    // Calculate final score (max reasonable score per level: ~26,800)
     const finalScore = survivalScore + killScore + efficiencyScore + timeBonus;
     
-    return Math.max(0, Math.floor(finalScore));
+    // Additional safety cap per level (30,000 points max per level)
+    return Math.max(0, Math.min(Math.floor(finalScore), 30000));
 }
 
 function drawScore() {
     const now = Date.now();
-    const levelTime = (now - levelStartTime) / 1000;
-    const levelEnemiesKilled = initialEnemyCount - enemies.length;
-    const levelScore = calculateLevelScore(levelTime, levelAmmoUsed, levelEnemiesKilled, initialEnemyCount);
     
-    ctx.font = 'bold 16px "Courier New"';
+    // Validate levelStartTime - if not initialized, use gameStartTime as fallback
+    const validLevelStartTime = levelStartTime > 0 ? levelStartTime : gameStartTime;
+    const levelTime = validLevelStartTime > 0 ? (now - validLevelStartTime) / 1000 : 0;
+    
+    // Cap levelTime to prevent absurdly large scores (max 1 hour per level)
+    const cappedLevelTime = Math.min(levelTime, 3600);
+    
+    const levelEnemiesKilled = initialEnemyCount - enemies.length;
+    const levelScore = calculateLevelScore(cappedLevelTime, levelAmmoUsed, levelEnemiesKilled, initialEnemyCount);
+    
+    // Additional safety check - cap displayed score to prevent overflow
+    const displayScore = Math.min(totalScore + levelScore, Number.MAX_SAFE_INTEGER);
+    
+    // Simplified display - just score, larger and centered
+    ctx.font = 'bold 24px "Courier New"';
     ctx.textAlign = "center";
     
     // Current total score with shadow
     ctx.fillStyle = '#000000';
-    ctx.fillText(`SCORE: ${totalScore + levelScore}`, canvas.width / 2 + 2, 67);
+    ctx.fillText(`SCORE: ${displayScore.toLocaleString()}`, canvas.width / 2 + 2, 52);
     ctx.fillStyle = '#FFD700'; // Gold color
-    ctx.fillText(`SCORE: ${totalScore + levelScore}`, canvas.width / 2, 65);
+    ctx.fillText(`SCORE: ${displayScore.toLocaleString()}`, canvas.width / 2, 50);
     
-    // Level stats below score
-    ctx.font = '12px "Courier New"';
-    ctx.fillStyle = '#888888';
-    ctx.fillText(`Level Score: ${levelScore} | Kills: ${levelEnemiesKilled}/${initialEnemyCount} | Ammo: ${levelAmmoUsed}`, canvas.width / 2, 82);
+    // Only show detailed stats if extra info is enabled
+    if (showExtraInfo) {
+        ctx.font = '12px "Courier New"';
+        ctx.fillStyle = '#00FFFF'; // Cyan color for visibility
+        ctx.textAlign = "left";
+        ctx.fillText(`Level Score: ${levelScore.toLocaleString()} | Kills: ${levelEnemiesKilled}/${initialEnemyCount} | Ammo: ${levelAmmoUsed}`, 10, 110);
+        ctx.textAlign = "center"; // Reset to center for other text
+    }
 }
 
 function drawAudioToggle() {
@@ -1581,6 +1722,8 @@ function drawHelpPanel() {
     yPos += 16;
     ctx.fillText('H: Toggle this help', panelX + 15, yPos);
     yPos += 16;
+    ctx.fillText('I: Toggle extra info (hidden)', panelX + 15, yPos);
+    yPos += 16;
     ctx.fillText('M: Toggle audio', panelX + 15, yPos);
     
     // Close hint at bottom
@@ -1591,6 +1734,7 @@ function drawHelpPanel() {
 }
 
 function drawUI() {
+    // Simplified UI - only level name and score by default
     // Draw semi-transparent background for UI area at the top
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
     ctx.fillRect(0, 0, canvas.width, UI_HEIGHT);
@@ -1603,15 +1747,23 @@ function drawUI() {
     ctx.lineTo(canvas.width, UI_HEIGHT);
     ctx.stroke();
     
-    drawHealthBar();
-    drawShieldBar();
-    drawHeatBar();
-    drawGrenadeCount();
+    // Always show: Level name and Score
     drawLevelDisplay();
-    drawTimeCounter();
     drawScore();
-    drawAudioToggle();
-    drawHelpButton(); // Help toggle button
+    drawHealthBar(); // Always show hull/lives
+
+    // Only show extra info if toggle is enabled (hidden key)
+    if (showExtraInfo) {
+        drawShieldBar();
+        drawHeatBar();
+        drawGrenadeCount();
+        drawTimeCounter();
+        drawDifficultyTier();
+        drawAudioToggle();
+    }
+
+    // Help button always visible (small, bottom corner)
+    drawHelpButton();
     drawHelpPanel(); // Draw help panel if visible
 }
 
@@ -1645,11 +1797,15 @@ function moveEnemyBullets() {
 }
 
 function moveEnemies() {
-    const speedMultiplier = 1 + (ENEMY_ROWS * ENEMY_COLS - enemies.length) * 0.05;
+    const baseSpeedMultiplier = 1 + (ENEMY_ROWS * ENEMY_COLS - enemies.length) * 0.05;
+    const adjustedSpeedMultiplier = baseSpeedMultiplier * (adjustedGameParams.enemyBaseSpeedMultiplier || 1.0);
+    const verticalDescent = adjustedGameParams.enemyVerticalDescent || 0.05;
+    const advanceSpeed = adjustedGameParams.enemyAdvanceSpeed || (ENEMY_HEIGHT / 4);
+    
     let hitEdge = false;
     enemies.forEach(enemy => {
-        enemy.x += enemySpeedDirection * speedMultiplier;
-        enemy.y += 0.05;
+        enemy.x += enemySpeedDirection * adjustedSpeedMultiplier;
+        enemy.y += verticalDescent;
         // Prevent enemies from moving into UI area
         if (enemy.y < UI_HEIGHT) enemy.y = UI_HEIGHT;
         if (enemy.x + enemy.width > canvas.width || enemy.x < 0) hitEdge = true;
@@ -1658,7 +1814,7 @@ function moveEnemies() {
     if (hitEdge) {
         enemySpeedDirection *= -1;
         enemies.forEach(enemy => {
-            enemy.y += ENEMY_HEIGHT / 4;
+            enemy.y += advanceSpeed;
             // Ensure enemies don't end up in UI area after moving down
             if (enemy.y < UI_HEIGHT) enemy.y = UI_HEIGHT;
         });
@@ -1666,8 +1822,10 @@ function moveEnemies() {
 }
 
 function movePowerups() {
+    // Use difficulty-adjusted fall speed (slower at easier difficulties - easier to catch)
+    const fallSpeed = adjustedGameParams.powerupFallSpeed || POWERUP_FALL_SPEED * 0.8;
     for (let i = powerups.length - 1; i >= 0; i--) {
-        powerups[i].y += POWERUP_FALL_SPEED;
+        powerups[i].y += fallSpeed;
         // Remove if off screen
         if (powerups[i].y > canvas.height) {
             powerups.splice(i, 1);
@@ -1683,7 +1841,8 @@ function detectCollisions() {
         const bullet = bullets[bulletIndex];
         for (let enemyIndex = enemies.length - 1; enemyIndex >= 0; enemyIndex--) {
             const enemy = enemies[enemyIndex];
-            const height = intensitySpikeActive ? 40 : enemy.height;
+            const sizeBonus = intensitySpikeActive ? (adjustedGameParams.intensitySpikeEnemySizeBonus || 8) : 0;
+            const height = enemy.height + sizeBonus;
 
             if (bullet.x > enemy.x && bullet.x < enemy.x + enemy.width &&
                 bullet.y > enemy.y && bullet.y < enemy.y + height) {
@@ -1701,9 +1860,11 @@ function detectCollisions() {
                     playSound('enemyDestroy');
                     totalEnemiesKilled++; // Track kills
 
-                    // Spawn powerup chance when enemy dies (level-balanced)
+                    // Spawn powerup chance when enemy dies (level-balanced with difficulty adjustment)
                     const balance = LEVEL_BALANCE[currentLevel];
-                    if (Math.random() < balance.dropChance) {
+                    const dropMultiplier = adjustedGameParams.powerupDropMultiplier || 1.0;
+                    const adjustedDropChance = balance.dropChance * dropMultiplier;
+                    if (Math.random() < adjustedDropChance) {
                         // Determine powerup type based on level weights
                         const rand = Math.random();
                         let powerupType;
@@ -1738,7 +1899,8 @@ function detectCollisions() {
             // Main grenade hits enemy and explodes
             for (let enemyIndex = enemies.length - 1; enemyIndex >= 0; enemyIndex--) {
                 const enemy = enemies[enemyIndex];
-                const height = intensitySpikeActive ? 40 : enemy.height;
+                const sizeBonus = intensitySpikeActive ? (adjustedGameParams.intensitySpikeEnemySizeBonus || 8) : 0;
+            const height = enemy.height + sizeBonus;
 
                 if (grenade.x > enemy.x && grenade.x < enemy.x + enemy.width &&
                     grenade.y > enemy.y && grenade.y < enemy.y + height) {
@@ -1751,7 +1913,8 @@ function detectCollisions() {
             // Fragment hits and damages enemy
             for (let enemyIndex = enemies.length - 1; enemyIndex >= 0; enemyIndex--) {
                 const enemy = enemies[enemyIndex];
-                const height = intensitySpikeActive ? 40 : enemy.height;
+                const sizeBonus = intensitySpikeActive ? (adjustedGameParams.intensitySpikeEnemySizeBonus || 8) : 0;
+            const height = enemy.height + sizeBonus;
 
                 if (grenade.x > enemy.x && grenade.x < enemy.x + enemy.width &&
                     grenade.y > enemy.y && grenade.y < enemy.y + height) {
@@ -1822,13 +1985,14 @@ function detectCollisions() {
                 // Level 2+: Damage shield first, then hull
                 if (player.shield > 0) {
                     const shieldBefore = player.shield;
-                    player.shield = Math.max(0, player.shield - ENEMY_BULLET_DAMAGE);
+                    const damage = adjustedGameParams.enemyBulletDamage || ENEMY_BULLET_DAMAGE;
+                    player.shield = Math.max(0, player.shield - damage);
                     player.shieldHitTime = Date.now(); // Record hit time for visual flash
                     playSound('shieldHit');
                     console.log('Shield hit! Shield now:', player.shield); // Debug
 
                     // If shield was depleted by this hit, also damage hull
-                    if (player.shield === 0 && shieldBefore < ENEMY_BULLET_DAMAGE) {
+                    if (player.shield === 0 && shieldBefore < damage) {
                         player.lives--;
                         playSound('hullHit');
                         console.log('Shield depleted + Hull hit! Lives now:', player.lives); // Debug
@@ -1878,9 +2042,11 @@ function detectCollisions() {
 }
 
 function enemyShoot() {
-    // Apply level-specific shooting intensity
+    // Apply level-specific shooting intensity and difficulty adjustments
     const balance = LEVEL_BALANCE[currentLevel];
-    const levelAdjustedChance = ENEMY_SHOOT_CHANCE * strikeVolumeMultiplier * balance.shootingIntensity;
+    const baseShootChance = adjustedGameParams.enemyShootChance || ENEMY_SHOOT_CHANCE;
+    const intensityMultiplier = adjustedGameParams.levelShootingIntensityMultiplier || 1.0;
+    const levelAdjustedChance = baseShootChance * strikeVolumeMultiplier * balance.shootingIntensity * intensityMultiplier;
 
     if (Math.random() < levelAdjustedChance && enemies.length > 0) {
         const frontlineEnemies = {};
@@ -1897,7 +2063,8 @@ function enemyShoot() {
             const dx = (player.x + player.width / 2) - (shooter.x + shooter.width / 2);
             const dy = player.y - (shooter.y + shooterHeight);
             const dist = Math.sqrt(dx * dx + dy * dy);
-            enemyBullets.push({ x: shooter.x + shooter.width / 2, y: shooter.y + shooterHeight, dx: (dx / dist) * ENEMY_BULLET_SPEED, dy: (dy / dist) * ENEMY_BULLET_SPEED });
+            const bulletSpeed = adjustedGameParams.enemyBulletSpeed || ENEMY_BULLET_SPEED;
+            enemyBullets.push({ x: shooter.x + shooter.width / 2, y: shooter.y + shooterHeight, dx: (dx / dist) * bulletSpeed, dy: (dy / dist) * bulletSpeed });
         }
     }
 }
@@ -1905,15 +2072,19 @@ function enemyShoot() {
 function updateGameState(now) {
     const elapsedTime = (now - gameStartTime) / 1000;
 
-    // Intensity spike system
+    // Intensity spike system (with difficulty adjustments)
     if (intensitySpikeActive) {
         if (now > intensitySpikeEndTime) {
             intensitySpikeActive = false;
-            nextIntensitySpikeTime = now + 5000 + Math.random() * 5000;
+            const intervalMin = adjustedGameParams.intensitySpikeIntervalMin || 5000;
+            const intervalMax = adjustedGameParams.intensitySpikeIntervalMax || 10000;
+            nextIntensitySpikeTime = now + intervalMin + Math.random() * (intervalMax - intervalMin);
         }
     } else if (now > nextIntensitySpikeTime) {
         intensitySpikeActive = true;
-        intensitySpikeEndTime = now + 2000 + Math.random() * 3000;
+        const durationMultiplier = adjustedGameParams.intensitySpikeDurationMultiplier || 1.0;
+        const baseDuration = 2000 + Math.random() * 3000;
+        intensitySpikeEndTime = now + (baseDuration * durationMultiplier);
     }
     strikeVolumeMultiplier = intensitySpikeActive ? 5 : 1 + (elapsedTime * 0.01);
 
@@ -1953,7 +2124,10 @@ function updateGameState(now) {
     }
 
     // Shield recharge (only Level 2+, and only if not firing rapidly and not locked out)
-    if (currentLevel > 1 && !player.weaponLockoutActive) {
+    // ABSOLUTE SAFEGUARD: Level 1 shields must remain 0
+    if (currentLevel === 1) {
+        player.shield = 0; // Force shields to 0 in Level 1
+    } else if (currentLevel > 1 && !player.weaponLockoutActive) {
         const timeSinceLastShot = now - player.lastShotTime;
         const canRecharge = timeSinceLastShot > (player.shootCooldown * 1.5) && player.heat < 40;
 
@@ -1977,10 +2151,18 @@ function update() {
     if (player.lives <= 0) {
         if (!gameOverSoundPlayed) {
             // Calculate final level score before showing game over
-            const levelTime = (now - levelStartTime) / 1000;
+            // Validate levelStartTime to prevent invalid calculations
+            const validLevelStartTime = levelStartTime > 0 ? levelStartTime : gameStartTime;
+            const levelTime = validLevelStartTime > 0 ? Math.min((now - validLevelStartTime) / 1000, 3600) : 0;
             const levelEnemiesKilled = initialEnemyCount - enemies.length;
             const levelScore = calculateLevelScore(levelTime, levelAmmoUsed, levelEnemiesKilled, initialEnemyCount);
-            totalScore += levelScore;
+            
+            // Safety check: ensure score is reasonable before adding
+            if (levelScore > 0 && levelScore < 50000) {
+                totalScore += levelScore;
+            } else {
+                console.warn('⚠️ Invalid level score detected:', levelScore, '- not adding to total');
+            }
             
             playSound('gameOver');
             gameOverSoundPlayed = true;
@@ -2012,6 +2194,16 @@ function update() {
                     if (result.success) {
                         console.log('✅ Score saved successfully to Firebase');
                         window.lastScoreSaveSuccess = true;
+                        
+                        // Update difficulty profile after game
+                        updateDifficultyAfterGame({
+                            score: totalScore,
+                            level: currentLevel,
+                            timeSeconds: totalTime,
+                            enemiesKilled: totalEnemiesKilled,
+                            won: false,
+                            ammoUsed: totalAmmoUsed
+                        });
                     } else {
                         console.error('❌ Failed to save score:', result.message);
                         window.lastScoreSaveSuccess = false;
@@ -2030,29 +2222,43 @@ function update() {
             }
         }
         drawBackground();
+        
+        // Simplified game over screen - only level name and score
+        const level = LEVELS[currentLevel];
         ctx.fillStyle = 'red';
-        ctx.font = '50px "Courier New"';
+        ctx.font = 'bold 60px "Courier New"';
         ctx.textAlign = "center";
-        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 60);
-        ctx.font = '20px "Courier New"';
-        ctx.fillText(`Final Level: ${currentLevel}`, canvas.width / 2, canvas.height / 2 - 30);
-        const totalTime = Math.floor((now - gameStartTime) / 1000);
-        ctx.fillText(`Time: ${totalTime}s | Kills: ${totalEnemiesKilled} | Ammo: ${totalAmmoUsed}`, canvas.width / 2, canvas.height / 2 + 10);
+        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 40);
+        
+        ctx.font = 'bold 28px "Courier New"';
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(`LEVEL ${currentLevel}: ${level.name}`, canvas.width / 2, canvas.height / 2 + 20);
+        
+        ctx.font = 'bold 36px "Courier New"';
         ctx.fillStyle = '#FFD700';
-        ctx.fillText(`FINAL SCORE: ${totalScore}`, canvas.width / 2, canvas.height / 2 + 40);
-        ctx.font = '14px "Courier New"';
-        if (window.scoreNotSavedReason === 'Insufficient gameplay') {
-            ctx.fillStyle = '#FFA500';
-            ctx.fillText('Score not saved - play longer or kill enemies!', canvas.width / 2, canvas.height / 2 + 70);
-        } else if (scoreSaved && window.lastScoreSaveSuccess === true) {
-            ctx.fillStyle = '#00FF00';
-            ctx.fillText('Score saved!', canvas.width / 2, canvas.height / 2 + 70);
-        } else if (scoreSaved && window.lastScoreSaveSuccess === false) {
-            ctx.fillStyle = '#FF0000';
-            ctx.fillText('Save failed - check console', canvas.width / 2, canvas.height / 2 + 70);
-        } else if (scoreSaved) {
-            ctx.fillStyle = '#888';
-            ctx.fillText('Saving score...', canvas.width / 2, canvas.height / 2 + 70);
+        ctx.fillText(`SCORE: ${totalScore.toLocaleString()}`, canvas.width / 2, canvas.height / 2 + 70);
+        
+        // Only show extra info if toggle is enabled
+        if (showExtraInfo) {
+            ctx.font = '16px "Courier New"';
+            ctx.fillStyle = '#888888';
+            const totalTime = Math.floor((now - gameStartTime) / 1000);
+            ctx.fillText(`Time: ${totalTime}s | Kills: ${totalEnemiesKilled} | Ammo: ${totalAmmoUsed}`, canvas.width / 2, canvas.height / 2 + 110);
+            
+            ctx.font = '14px "Courier New"';
+            if (window.scoreNotSavedReason === 'Insufficient gameplay') {
+                ctx.fillStyle = '#FFA500';
+                ctx.fillText('Score not saved - play longer or kill enemies!', canvas.width / 2, canvas.height / 2 + 140);
+            } else if (scoreSaved && window.lastScoreSaveSuccess === true) {
+                ctx.fillStyle = '#00FF00';
+                ctx.fillText('Score saved!', canvas.width / 2, canvas.height / 2 + 140);
+            } else if (scoreSaved && window.lastScoreSaveSuccess === false) {
+                ctx.fillStyle = '#FF0000';
+                ctx.fillText('Save failed - check console', canvas.width / 2, canvas.height / 2 + 140);
+            } else if (scoreSaved) {
+                ctx.fillStyle = '#888';
+                ctx.fillText('Saving score...', canvas.width / 2, canvas.height / 2 + 140);
+            }
         }
         return;
     }
@@ -2061,10 +2267,18 @@ function update() {
     if (enemies.length === 0 && !levelTransitioning) {
         // Calculate and add level score before transitioning
         const now = Date.now();
-        const levelTime = (now - levelStartTime) / 1000;
+        // Validate levelStartTime to prevent invalid calculations
+        const validLevelStartTime = levelStartTime > 0 ? levelStartTime : gameStartTime;
+        const levelTime = validLevelStartTime > 0 ? Math.min((now - validLevelStartTime) / 1000, 3600) : 0;
         const levelEnemiesKilled = initialEnemyCount - enemies.length;
         const levelScore = calculateLevelScore(levelTime, levelAmmoUsed, levelEnemiesKilled, initialEnemyCount);
-        totalScore += levelScore;
+        
+        // Safety check: ensure score is reasonable before adding
+        if (levelScore > 0 && levelScore < 50000) {
+            totalScore += levelScore;
+        } else {
+            console.warn('⚠️ Invalid level score detected:', levelScore, '- not adding to total');
+        }
         
         if (currentLevel < 3) {
             // Next level
@@ -2134,6 +2348,16 @@ function update() {
                         if (result.success) {
                             console.log('✅ Score saved successfully to Firebase');
                             window.lastScoreSaveSuccess = true;
+                            
+                            // Update difficulty profile after victory
+                            updateDifficultyAfterGame({
+                                score: totalScore,
+                                level: 3,
+                                timeSeconds: totalTime,
+                                enemiesKilled: totalEnemiesKilled,
+                                won: true,
+                                ammoUsed: totalAmmoUsed
+                            });
                         } else {
                             console.error('❌ Failed to save score:', result.message);
                             window.lastScoreSaveSuccess = false;
@@ -2147,25 +2371,41 @@ function update() {
                 }
             }
             drawBackground();
+            
+            // Simplified victory screen - only level name and score
+            const level = LEVELS[3]; // All levels completed
             ctx.fillStyle = '#FFD700';
-            ctx.font = '50px "Courier New"';
+            ctx.font = 'bold 60px "Courier New"';
             ctx.textAlign = "center";
-            ctx.fillText("VICTORY!", canvas.width / 2, canvas.height / 2 - 60);
-            ctx.font = '20px "Courier New"';
-            ctx.fillText(`Final Time: ${Math.floor(levelTime)}s | Total Ammo: ${totalAmmoUsed}`, canvas.width / 2, canvas.height / 2 - 30);
-            ctx.fillText(`FINAL SCORE: ${totalScore}`, canvas.width / 2, canvas.height / 2 + 10);
-            ctx.fillText("All levels completed!", canvas.width / 2, canvas.height / 2 + 40);
-            if (scoreSaved) {
-                ctx.font = '14px "Courier New"';
-                if (window.lastScoreSaveSuccess === true) {
-                    ctx.fillStyle = '#00FF00';
-                    ctx.fillText('Score saved!', canvas.width / 2, canvas.height / 2 + 70);
-                } else if (window.lastScoreSaveSuccess === false) {
-                    ctx.fillStyle = '#FF0000';
-                    ctx.fillText('Save failed - check console', canvas.width / 2, canvas.height / 2 + 70);
-                } else {
-                    ctx.fillStyle = '#888';
-                    ctx.fillText('Saving score...', canvas.width / 2, canvas.height / 2 + 70);
+            ctx.fillText("VICTORY!", canvas.width / 2, canvas.height / 2 - 40);
+            
+            ctx.font = 'bold 28px "Courier New"';
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillText(`LEVEL 3: ${level.name}`, canvas.width / 2, canvas.height / 2 + 20);
+            
+            ctx.font = 'bold 36px "Courier New"';
+            ctx.fillStyle = '#FFD700';
+            ctx.fillText(`SCORE: ${totalScore.toLocaleString()}`, canvas.width / 2, canvas.height / 2 + 70);
+            
+            // Only show extra info if toggle is enabled
+            if (showExtraInfo) {
+                ctx.font = '16px "Courier New"';
+                ctx.fillStyle = '#888888';
+                ctx.fillText(`Final Time: ${Math.floor(levelTime)}s | Total Ammo: ${totalAmmoUsed}`, canvas.width / 2, canvas.height / 2 + 110);
+                ctx.fillText("All levels completed!", canvas.width / 2, canvas.height / 2 + 135);
+                
+                if (scoreSaved) {
+                    ctx.font = '14px "Courier New"';
+                    if (window.lastScoreSaveSuccess === true) {
+                        ctx.fillStyle = '#00FF00';
+                        ctx.fillText('Score saved!', canvas.width / 2, canvas.height / 2 + 160);
+                    } else if (window.lastScoreSaveSuccess === false) {
+                        ctx.fillStyle = '#FF0000';
+                        ctx.fillText('Save failed - check console', canvas.width / 2, canvas.height / 2 + 160);
+                    } else {
+                        ctx.fillStyle = '#888';
+                        ctx.fillText('Saving score...', canvas.width / 2, canvas.height / 2 + 160);
+                    }
                 }
             }
             return;
@@ -2231,6 +2471,11 @@ function keyDown(e) {
         playSound('powerup'); // Test sound when toggling on
     } else if (e.key === 'h' || e.key === 'H') {
         showHelp = !showHelp;
+        e.preventDefault();
+    } else if (e.key === 'i' || e.key === 'I') {
+        // Hidden key: Toggle extra UI info (I for Info)
+        showExtraInfo = !showExtraInfo;
+        console.log(`ℹ️ Extra info ${showExtraInfo ? 'ON' : 'OFF'}`);
         e.preventDefault();
     }
 }
@@ -2383,19 +2628,357 @@ function explodeGrenade(grenade, grenadeIndex) {
 }
 
 
-// --- START GAME ---
-console.log('Game starting...');
+// --- ADAPTIVE DIFFICULTY SYSTEM ---
 
-// Initialize shields if starting at Level 2+
-if (currentLevel >= 2) {
-    player.shield = player.maxShield;
-    console.log('Shields activated for Level', currentLevel);
+// Apply difficulty adjustments to game parameters
+function applyDifficultyAdjustments(multiplier) {
+    difficultyMultiplier = multiplier;
+    adjustedGameParams = {};
+    
+    // Enemy shooting adjustments (easier at lower multipliers)
+    // At 0.8 multiplier: 0.0012 (40% of base), at 1.0: 0.0015 (75% of base)
+    adjustedGameParams.enemyShootChance = ENEMY_SHOOT_CHANCE * (0.5 + multiplier * 0.5);
+    
+    // Enemy movement adjustments (slower at default)
+    // At 0.8 multiplier: 1.04x (4% faster), at 1.0: 1.15x (15% faster)
+    adjustedGameParams.enemyBaseSpeedMultiplier = 0.8 + multiplier * 0.35;
+    // At 0.8 multiplier: 0.04 (20% slower), at 1.0: 0.06 (same as before)
+    adjustedGameParams.enemyVerticalDescent = 0.04 * (1.0 + multiplier * 0.5);
+    // At 0.8 multiplier: 7.2px (10% slower), at 1.0: 8px (base)
+    adjustedGameParams.enemyAdvanceSpeed = (ENEMY_HEIGHT / 4) * (0.9 + multiplier * 0.25);
+    
+    // Enemy bullet adjustments (slower at default)
+    // At 0.8 multiplier: 3.36 (16% slower), at 1.0: 3.6 (10% slower)
+    adjustedGameParams.enemyBulletSpeed = ENEMY_BULLET_SPEED * (0.8 + multiplier * 0.3);
+    // At 0.8 multiplier: 24 (20% less damage), at 1.0: 27 (10% less)
+    adjustedGameParams.enemyBulletDamage = ENEMY_BULLET_DAMAGE * (0.8 + multiplier * 0.3);
+    
+    // Sentinel shield adjustments (more hits = harder)
+    adjustedGameParams.sentinelShieldHits = 2 + Math.floor(multiplier * 0.5);
+    
+    // Player weapon adjustments (harder = more heat, slower cooling)
+    adjustedGameParams.heatPerShot = 8 * (1.0 + multiplier * 0.25);
+    adjustedGameParams.heatDissipationRate = 0.5 * (1.0 - multiplier * 0.2);
+    adjustedGameParams.heatDissipationDelay = 500 * (1.0 + multiplier * 0.5);
+    adjustedGameParams.lockoutDuration = 3000 * (1.0 + multiplier * 0.3);
+    adjustedGameParams.shootCooldown = 200 * (1.0 + multiplier * 0.2);
+    
+    // Player shield adjustments (harder = slower recharge)
+    adjustedGameParams.shieldRechargeRate = 0.05 * (1.0 - multiplier * 0.3);
+    adjustedGameParams.maxShield = Math.max(80, 100 - Math.floor(multiplier * 5));
+    
+    // Player movement (slight reduction)
+    adjustedGameParams.playerSpeed = PLAYER_SPEED * (1.0 - multiplier * 0.15);
+    
+    // Starting resources (only at very high difficulty)
+    if (multiplier > 1.5) {
+        adjustedGameParams.startingLives = 2;
+        adjustedGameParams.startingGrenades = 0;
+    } else {
+        adjustedGameParams.startingLives = 3;
+        adjustedGameParams.startingGrenades = 1;
+    }
+    
+    // Powerup adjustments (fewer drops at higher difficulty, but more at easier)
+    adjustedGameParams.powerupDropMultiplier = 1.2 - multiplier * 0.4; // At 0.8: 1.08x (more), at 1.0: 1.0x (base)
+    
+    // Powerup fall speed (slower at easier difficulties - easier to catch)
+    // At 0.8 multiplier: 1.4 (30% slower), at 1.0: 1.8 (10% slower), at 1.5+: 2.0+ (faster)
+    adjustedGameParams.powerupFallSpeed = POWERUP_FALL_SPEED * (0.7 + multiplier * 0.3);
+    
+    // Intensity spike adjustments
+    adjustedGameParams.intensitySpikeIntervalMin = 5000 * (1.0 - multiplier * 0.3);
+    adjustedGameParams.intensitySpikeIntervalMax = 10000 * (1.0 - multiplier * 0.3);
+    adjustedGameParams.intensitySpikeDurationMultiplier = 1.0 + multiplier * 0.3;
+    adjustedGameParams.intensitySpikeEnemySizeBonus = 8 * (1.0 + multiplier * 0.5);
+    
+    // Enemy count adjustments (more enemies)
+    adjustedGameParams.enemyCountMultiplier = 1.0 + multiplier * 0.3;
+    adjustedGameParams.enemyGap = Math.max(10, ENEMY_GAP - multiplier * 1.0);
+    
+    // Level shooting intensity multiplier
+    adjustedGameParams.levelShootingIntensityMultiplier = 1.0 + multiplier * 0.4;
+    
+    console.log(`🎯 Applied difficulty multiplier: ${multiplier.toFixed(2)} (${getDifficultyTierName(multiplier)})`);
+    
+    // Log all adjusted parameters
+    logDifficultyParameters(multiplier);
 }
 
-createEnemies();
-gameStartTime = Date.now();
-levelStartTime = Date.now(); // Initialize level start time
-nextIntensitySpikeTime = gameStartTime + 5000 + Math.random() * 5000;
+// Log all difficulty parameters for a user
+function logDifficultyParameters(multiplier) {
+    if (!window.currentUser) return;
+    
+    const user = window.currentUser.email || 'unknown';
+    const tier = getDifficultyTierName(multiplier);
+    
+    console.group(`📊 DIFFICULTY PARAMETERS - ${user} (${tier} - ${multiplier.toFixed(2)}x)`);
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🎯 ENEMY BEHAVIOR');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`  Shooting Chance:       ${adjustedGameParams.enemyShootChance.toFixed(6)} (base: ${ENEMY_SHOOT_CHANCE})`);
+    console.log(`  Bullet Speed:          ${adjustedGameParams.enemyBulletSpeed.toFixed(2)} (base: ${ENEMY_BULLET_SPEED})`);
+    console.log(`  Bullet Damage:         ${adjustedGameParams.enemyBulletDamage.toFixed(1)} (base: ${ENEMY_BULLET_DAMAGE})`);
+    console.log(`  Movement Speed:        ${adjustedGameParams.enemyBaseSpeedMultiplier.toFixed(2)}x`);
+    console.log(`  Vertical Descent:      ${adjustedGameParams.enemyVerticalDescent.toFixed(4)} (base: 0.05)`);
+    console.log(`  Advance Speed:         ${adjustedGameParams.enemyAdvanceSpeed.toFixed(2)} (base: ${ENEMY_HEIGHT / 4})`);
+    console.log(`  Sentinel Shield Hits:  ${adjustedGameParams.sentinelShieldHits} (base: 2-3)`);
+    console.log(`  Enemy Count Multiplier: ${adjustedGameParams.enemyCountMultiplier.toFixed(2)}x`);
+    console.log(`  Enemy Gap:             ${adjustedGameParams.enemyGap.toFixed(1)} (base: ${ENEMY_GAP})`);
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('⚔️  PLAYER WEAPON SYSTEM');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`  Heat Per Shot:         ${adjustedGameParams.heatPerShot.toFixed(2)} (base: 8)`);
+    console.log(`  Heat Dissipation Rate: ${adjustedGameParams.heatDissipationRate.toFixed(3)} (base: 0.5)`);
+    console.log(`  Heat Dissipation Delay: ${adjustedGameParams.heatDissipationDelay.toFixed(0)}ms (base: 500ms)`);
+    console.log(`  Lockout Duration:      ${adjustedGameParams.lockoutDuration.toFixed(0)}ms (base: 3000ms)`);
+    console.log(`  Shoot Cooldown:        ${adjustedGameParams.shootCooldown.toFixed(0)}ms (base: 200ms)`);
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🛡️  PLAYER SHIELD SYSTEM');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`  Max Shield:            ${adjustedGameParams.maxShield} (base: 100)`);
+    console.log(`  Shield Recharge Rate:  ${adjustedGameParams.shieldRechargeRate.toFixed(4)} (base: 0.05)`);
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🏃 PLAYER MOVEMENT');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`  Player Speed:          ${adjustedGameParams.playerSpeed.toFixed(2)} (base: ${PLAYER_SPEED})`);
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('💎 RESOURCES & POWERUPS');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`  Starting Lives:        ${adjustedGameParams.startingLives} (base: 3)`);
+    console.log(`  Starting Grenades:     ${adjustedGameParams.startingGrenades} (base: 1)`);
+    console.log(`  Powerup Drop Rate:     ${(adjustedGameParams.powerupDropMultiplier * 100).toFixed(1)}% (100% = base)`);
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('⚡ INTENSITY SPIKES');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`  Spike Interval:        ${adjustedGameParams.intensitySpikeIntervalMin.toFixed(0)}-${adjustedGameParams.intensitySpikeIntervalMax.toFixed(0)}ms (base: 5000-10000ms)`);
+    console.log(`  Spike Duration:        ${adjustedGameParams.intensitySpikeDurationMultiplier.toFixed(2)}x`);
+    console.log(`  Enemy Size Bonus:      +${adjustedGameParams.intensitySpikeEnemySizeBonus.toFixed(1)}px (base: +8px)`);
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('📈 LEVEL MODIFIERS');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`  Shooting Intensity:    ${adjustedGameParams.levelShootingIntensityMultiplier.toFixed(2)}x multiplier`);
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.groupEnd();
+}
+
+// Get difficulty tier name
+function getDifficultyTierName(multiplier) {
+    if (multiplier < 0.9) return "Beginner";
+    if (multiplier < 1.2) return "Normal";
+    if (multiplier < 1.5) return "Advanced";
+    if (multiplier < 2.0) return "Expert";
+    return "Master";
+}
+
+// Apply adjusted parameters to player object
+function applyPlayerDifficulty() {
+    if (!adjustedGameParams.heatPerShot) return; // Not initialized yet
+    
+    player.heatPerShot = adjustedGameParams.heatPerShot;
+    player.heatDissipationRate = adjustedGameParams.heatDissipationRate;
+    player.heatDissipationDelay = adjustedGameParams.heatDissipationDelay;
+    player.lockoutDuration = adjustedGameParams.lockoutDuration;
+    player.shootCooldown = adjustedGameParams.shootCooldown;
+    player.shieldRechargeRate = adjustedGameParams.shieldRechargeRate;
+    player.maxShield = adjustedGameParams.maxShield;
+    // Note: Shield current value will be set based on currentLevel after this function
+    player.speed = adjustedGameParams.playerSpeed;
+    player.lives = adjustedGameParams.startingLives;
+    player.maxLives = adjustedGameParams.startingLives;
+    player.grenades = adjustedGameParams.startingGrenades;
+}
+
+// Load player difficulty profile and apply adjustments
+async function loadAndApplyDifficulty() {
+    if (!window.currentUser || typeof window.difficultyManager === 'undefined') {
+        console.log('⚠️ No user or difficulty manager available, using easier default difficulty');
+        applyDifficultyAdjustments(0.7); // Easier default
+        applyPlayerDifficulty();
+        return;
+    }
+    
+    try {
+        const profile = await window.difficultyManager.getPlayerDifficultyProfile(
+            window.currentUser.email,
+            window.currentUser.name
+        );
+        
+        if (profile) {
+            playerDifficultyProfile = profile;
+            const multiplier = profile.difficultyMultiplier || 1.0;
+            applyDifficultyAdjustments(multiplier);
+            applyPlayerDifficulty();
+            
+            console.log(`📊 Player difficulty: ${multiplier.toFixed(2)} (${profile.difficultyTier || getDifficultyTierName(multiplier)})`);
+            
+            // Log detailed profile metrics
+            if (typeof window.difficultyManager !== 'undefined' && window.difficultyManager.logPlayerProfileMetrics) {
+                window.difficultyManager.logPlayerProfileMetrics(profile);
+            }
+        } else {
+            // Default difficulty (easier for new players)
+            applyDifficultyAdjustments(0.8);
+            applyPlayerDifficulty();
+        }
+    } catch (error) {
+        console.error('❌ Error loading difficulty profile:', error);
+        // Fallback to easier default
+        applyDifficultyAdjustments(0.8);
+        applyPlayerDifficulty();
+    }
+}
+
+// Update player profile after game ends
+async function updateDifficultyAfterGame(gameResult) {
+    if (!window.currentUser || typeof window.difficultyManager === 'undefined') {
+        console.log('⚠️ Cannot update difficulty: no user or difficulty manager');
+        return;
+    }
+    
+    try {
+        const updatedProfile = await window.difficultyManager.updatePlayerProfileAfterGame(
+            window.currentUser.email,
+            window.currentUser.name,
+            gameResult
+        );
+        
+        if (updatedProfile) {
+            playerDifficultyProfile = updatedProfile;
+            console.log(`📊 Updated difficulty profile. New multiplier: ${updatedProfile.difficultyMultiplier.toFixed(2)} (${updatedProfile.difficultyTier})`);
+        }
+    } catch (error) {
+        console.error('❌ Error updating difficulty profile:', error);
+    }
+}
+
+// --- START GAME ---
+console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+console.log('🎮 GAME INITIALIZATION');
+console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+console.log(`🔍 Initial currentLevel value: ${currentLevel}`);
+
+// FORCE reset to Level 1 - absolutely must start at level 1
+currentLevel = 1;
+console.log(`✅ Reset currentLevel to: ${currentLevel}`);
+
+// Verify Level 1 exists and enforce it
+if (!enforceLevel1()) {
+    console.error('❌ CRITICAL: Cannot proceed without Level 1!');
+    // Cannot use return at top level, so we'll just log and continue
+    // The game will fail gracefully if Level 1 doesn't exist
+} else {
+    console.log(`✅ Level 1 verified: "${LEVELS[1].name}" (${LEVELS[1].formation} formation)`);
+}
+
+// Load and apply difficulty before initializing game
+loadAndApplyDifficulty().then(() => {
+    // FORCE currentLevel to 1 again after async operations (safety check)
+    if (currentLevel !== 1) {
+        console.warn(`⚠️ WARNING: currentLevel was ${currentLevel}, forcing back to 1`);
+        currentLevel = 1;
+    }
+    
+    console.log(`🔍 currentLevel after difficulty load: ${currentLevel}`);
+    console.log(`🔍 Level 1 exists:`, LEVELS[1] ? 'YES' : 'NO');
+    console.log(`🔍 Level 1 name:`, LEVELS[1] ? LEVELS[1].name : 'NOT FOUND');
+    
+    // Verify currentLevel before starting
+    console.log(`🚀 Starting game at Level ${currentLevel}`);
+    console.log(`📍 Level definition:`, LEVELS[currentLevel] ? LEVELS[currentLevel].name : 'NOT FOUND!');
+    
+    // ABSOLUTELY ensure we're at Level 1
+    if (currentLevel !== 1) {
+        console.error(`❌ ERROR: currentLevel is ${currentLevel}, should be 1! Forcing reset...`);
+        currentLevel = 1;
+    }
+    
+    // ABSOLUTELY ensure we're at Level 1 before proceeding
+    if (!enforceLevel1()) {
+        console.error('❌ CRITICAL: Cannot enforce Level 1!');
+        return;
+    }
+    
+    // Initialize shields based on level (must be after applyPlayerDifficulty)
+    // Level 1: Shields MUST be OFFLINE (0)
+    player.shield = 0;
+    player.maxShield = 100; // Keep max value for later levels, but current is 0
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('❌ SHIELDS: OFFLINE for Level 1 (Training Mode)');
+    console.log(`   player.shield = ${player.shield}`);
+    console.log(`   player.maxShield = ${player.maxShield}`);
+    console.log(`   currentLevel = ${currentLevel}`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
+    console.log(`🔍 About to create enemies for Level ${currentLevel}`);
+    createEnemies();
+    console.log(`✅ Created ${enemies.length} enemies for Level ${currentLevel}`);
+    if (LEVELS[currentLevel]) {
+        console.log(`   Level name: "${LEVELS[currentLevel].name}"`);
+        console.log(`   Formation: "${LEVELS[currentLevel].formation}"`);
+    }
+    
+    gameStartTime = Date.now();
+    levelStartTime = Date.now(); // Initialize level start time
+    
+    // Set intensity spike timing with difficulty adjustments
+    const intervalMin = adjustedGameParams.intensitySpikeIntervalMin || 5000;
+    const intervalMax = adjustedGameParams.intensitySpikeIntervalMax || 10000;
+    nextIntensitySpikeTime = gameStartTime + intervalMin + Math.random() * (intervalMax - intervalMin);
+    
+    // Start game loop
+    update();
+});
+
+// Fallback: Start game if difficulty loading takes too long
+setTimeout(() => {
+    if (gameStartTime === 0) {
+        console.log('⚠️ Difficulty loading timeout, starting with default difficulty...');
+        applyDifficultyAdjustments(0.7); // Easier default
+        applyPlayerDifficulty();
+        
+        // FORCE currentLevel to 1 in fallback too
+        if (currentLevel !== 1) {
+            console.warn(`⚠️ WARNING: currentLevel was ${currentLevel} in fallback, forcing back to 1`);
+            currentLevel = 1;
+        }
+        
+        // Verify currentLevel before starting
+        console.log(`🚀 Starting game at Level ${currentLevel} (fallback)`);
+        console.log(`📍 Level definition:`, LEVELS[currentLevel] ? LEVELS[currentLevel].name : 'NOT FOUND!');
+        
+        // Initialize shields based on level
+        if (currentLevel === 1) {
+            // Level 1: Shields OFFLINE (explicitly set to 0)
+            player.shield = 0;
+            player.maxShield = 100; // Keep max value for later levels
+            console.log('❌ Shields OFFLINE for Level 1 (Training Mode)');
+            console.log(`🔍 Shield value after reset: player.shield = ${player.shield}, player.maxShield = ${player.maxShield}`);
+        } else if (currentLevel >= 2) {
+            // Level 2+: Shields active
+            player.shield = player.maxShield;
+            console.log(`✅ Shields activated for Level ${currentLevel}`);
+        }
+        
+        console.log(`🔍 About to create enemies for Level ${currentLevel} (fallback)`);
+        createEnemies();
+        console.log(`🔍 Created ${enemies.length} enemies for Level ${currentLevel} (fallback)`);
+        gameStartTime = Date.now();
+        levelStartTime = Date.now();
+        const intervalMin = adjustedGameParams.intensitySpikeIntervalMin || 5000;
+        const intervalMax = adjustedGameParams.intensitySpikeIntervalMax || 10000;
+        nextIntensitySpikeTime = gameStartTime + intervalMin + Math.random() * (intervalMax - intervalMin);
+        update();
+    }
+}, 2000); // 2 second timeout
 
 // Reset score tracking
 totalScore = 0;
@@ -2421,5 +3004,5 @@ window.addEventListener('blur', () => {
     player.dx = 0;
 });
 
-// Start game loop
-update();
+// NOTE: update() is called inside loadAndApplyDifficulty().then() after enemies are created
+// DO NOT call update() here or it will start with 0 enemies and skip to Level 2!
