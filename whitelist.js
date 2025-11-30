@@ -11,7 +11,10 @@ const AUTHORIZED_EMAILS = [
     'istvanzsoldos@freemail.hu',
     'bogdany.zsolt1@gmail.com',
     'szali71@gmail.com',
-    
+    'csabapalfi71@gmail.com',
+    'rozsa@gmail.com',
+    'nagycs@gmail.com',
+    'dottore@gmail.com'
     // Add up to 20 emails
 ];
 

@@ -255,14 +255,25 @@
 
         async function loadDataCounts() {
             log('Loading data counts...');
-            const collections = ['telemetry', 'scores', 'notifications', 'fcm_tokens'];
+            // Map collection names to their corresponding element IDs
+            const collectionMap = {
+                'telemetry': 'telemetryCount',
+                'scores': 'scoresCount',
+                'notifications': 'notificationsCount',
+                'fcm_tokens': 'fcmTokensCount'
+            };
 
-            for (const collection of collections) {
+            for (const [collection, elementId] of Object.entries(collectionMap)) {
                 try {
                     const snapshot = await window.db.collection(collection).get();
                     const count = snapshot.size;
-                    document.getElementById(`${collection.replace('_', '')}Count`).textContent = `(${count} documents)`;
-                    log(`${collection}: ${count} documents`);
+                    const element = document.getElementById(elementId);
+                    if (element) {
+                        element.textContent = `(${count} documents)`;
+                        log(`${collection}: ${count} documents`);
+                    } else {
+                        log(`Warning: Element ${elementId} not found for collection ${collection}`, 'error');
+                    }
                 } catch (error) {
                     log(`Error loading ${collection}: ${error.message}`, 'error');
                 }
