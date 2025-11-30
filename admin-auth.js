@@ -1,10 +1,6 @@
 // Admin Authentication System
 // Simple admin check based on email whitelist
-
-const ADMIN_EMAILS = [
-    // Add admin emails here
-    // Example: 'admin@example.com'
-];
+// NOTE: ADMIN_EMAILS and isAdminEmail are defined in admin-whitelist.js
 
 // Check if current user is admin
 function isAdmin() {
@@ -13,8 +9,17 @@ function isAdmin() {
         return false;
     }
     
-    // Check if email is in admin list
-    return ADMIN_EMAILS.includes(currentUser.email.toLowerCase());
+    // Use isAdminEmail from admin-whitelist.js if available
+    if (typeof isAdminEmail === 'function') {
+        return isAdminEmail(currentUser.email);
+    }
+    
+    // Fallback: check ADMIN_EMAILS if available
+    if (typeof window !== 'undefined' && window.ADMIN_EMAILS) {
+        return window.ADMIN_EMAILS.includes(currentUser.email.toLowerCase());
+    }
+    
+    return false;
 }
 
 // Require admin for accessing dashboard pages

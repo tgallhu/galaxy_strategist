@@ -6,7 +6,12 @@ const AUTHORIZED_EMAILS = [
     // 'friend2@example.com',
     // 'friend3@example.com',
     't_gallhu@yahoo.com',
-    'tgallhu@gmail.com'
+    'tgallhu@gmail.com',
+    'petcomes@gmail.com',
+    'istvanzsoldos@freemail.hu',
+    'bogdany.zsolt1@gmail.com',
+    'szali71@gmail.com',
+    
     // Add up to 20 emails
 ];
 

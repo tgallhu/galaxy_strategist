@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Set Difficulty - Admin Tool</title>
+    <link rel="stylesheet" href="../style.css">
+    <style>
+        .container {
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 30px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #00FFFF;
+        }
+        h1 {
+            color: #00FFFF;
+            text-align: center;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #00FFFF;
+            background: rgba(0, 255, 255, 0.05);
+        }
+        button {
+            background: #00FFFF;
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            width: 100%;
+            margin: 5px 0;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #00cccc;
+        }
+        #output {
+            margin-top: 20px;
+            padding: 15px;
+            background: #000;
+            border: 1px solid #00FFFF;
+            color: #0f0;
+            font-family: 'Courier New', monospace;
+            min-height: 100px;
+        }
+        .tier-info {
+            color: #00FFFF;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Set Difficulty Level</h1>
+
+        <div class="section">
+            <h2>Quick Set Difficulty for tgallhu@gmail.com</h2>
+
+            <button onclick="setDifficulty(0.6, 'Beginner')">
+                Set to BEGINNER (0.6x)
+                <div class="tier-info">New player experience, easiest difficulty</div>
+            </button>
+
+            <button onclick="setDifficulty(1.0, 'Normal')">
+                Set to NORMAL (1.0x)
+                <div class="tier-info">Standard difficulty, balanced gameplay</div>
+            </button>
+
+            <button onclick="setDifficulty(1.5, 'Advanced')">
+                Set to ADVANCED (1.5x)
+                <div class="tier-info">Experienced player, increased challenge</div>
+            </button>
+
+            <button onclick="setDifficulty(2.0, 'Expert')">
+                Set to EXPERT (2.0x)
+                <div class="tier-info">Skilled player, significant challenge</div>
+            </button>
+
+            <button onclick="setDifficulty(2.5, 'Master')" style="background: #ff00ff;">
+                Set to MASTER (2.5x) 🔥
+                <div class="tier-info">Maximum difficulty, ultimate challenge</div>
+            </button>
+
+            <button onclick="lockDifficulty(2.5, 'Master')" style="background: #ff0000; margin-top: 20px;">
+                LOCK at MASTER (2.5x) - Testing Mode 🔒
+                <div class="tier-info">Locks difficulty at 2.5x - won't change after games</div>
+            </button>
+        </div>
+
+        <div id="output">Waiting for action...</div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
+    <script src="../firebase-config.js"></script>
+    <script src="../whitelist.js"></script>
+    <script src="../admin-whitelist.js"></script>
+    <script src="../auth.js"></script>
+    <script src="../scores.js"></script>
+
+    <script>
+        function log(message, color = '#0f0') {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            output.innerHTML += `<div style="color: ${color}">[${timestamp}] ${message}</div>`;
+            output.scrollTop = output.scrollHeight;
+        }
+
+        async function lockDifficulty(multiplier, tier) {
+            const email = 'tgallhu@gmail.com';
+
+            log(`🔒 LOCKING ${email} at ${tier} (${multiplier}x) - Testing Mode...`, '#ff0000');
+
+            try {
+                if (!window.db) {
+                    if (typeof initFirestore === 'function') {
+                        initFirestore();
+                    } else {
+                        log('❌ Firestore not initialized', '#ff0000');
+                        return;
+                    }
+                }
+
+                const userRef = window.db.collection('users').doc(email);
+
+                // Set to VERY high stats that will always calculate to max difficulty
+                // Even with losses, it will stay at max
+                await userRef.set({
+                    email: email,
+                    name: 'tgallhu',
+                    gamesPlayed: 50, // High number
+                    bestScore: 500000, // Extremely high
+                    averageScore: 400000,
+                    highestLevel: 3,
+                    totalPlayTime: 9000,
+                    totalEnemiesKilled: 5000,
+                    gamesWon: 48, // Almost perfect win rate
+                    winRate: 0.96, // 96% win rate
+                    consecutiveWins: 10, // Max streak
+                    consecutiveLosses: 0, // Reset losses
+                    recentScores: [450000, 460000, 470000, 480000, 490000],
+                    recentAverage: 470000,
+                    recentGames: 5,
+                    difficultyMultiplier: multiplier,
+                    difficultyTier: tier,
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+
+                log(`✅ LOCKED at ${tier} (${multiplier}x)!`, '#00ff00');
+                log(`🔒 Stats set so high that difficulty won't drop even with losses`, '#ffff00');
+                log(`📊 Win rate: 96%, Best score: 500k, Consecutive wins: 10`, '#ffff00');
+                log('', '#fff');
+                log('🔄 RELOAD THE GAME PAGE to see changes!', '#ff00ff');
+
+                // Verify
+                const doc = await userRef.get();
+                const data = doc.data();
+                log('', '#fff');
+                log('✓ Verified in database:', '#00ff00');
+                log(`  - Difficulty: ${data.difficultyMultiplier}x (${data.difficultyTier})`, '#00ffff');
+                log(`  - This will stay at max even with losses!`, '#00ffff');
+
+            } catch (error) {
+                log(`❌ Error: ${error.message}`, '#ff0000');
+                console.error(error);
+            }
+        }
+
+        async function setDifficulty(multiplier, tier) {
+            const email = 'tgallhu@gmail.com';
+
+            log(`Setting ${email} to ${tier} (${multiplier}x)...`, '#00FFFF');
+
+            try {
+                if (!window.db) {
+                    if (typeof initFirestore === 'function') {
+                        initFirestore();
+                    } else {
+                        log('❌ Firestore not initialized', '#ff0000');
+                        return;
+                    }
+                }
+
+                // Calculate appropriate stats for the difficulty tier
+                let gamesPlayed, bestScore, averageScore, winRate, gamesWon;
+
+                switch(tier) {
+                    case 'Beginner':
+                        gamesPlayed = 1;
+                        bestScore = 10000;
+                        averageScore = 8000;
+                        winRate = 0.0;
+                        gamesWon = 0;
+                        break;
+                    case 'Normal':
+                        gamesPlayed = 8;
+                        bestScore = 45000;
+                        averageScore = 35000;
+                        winRate = 0.5;
+                        gamesWon = 4;
+                        break;
+                    case 'Advanced':
+                        gamesPlayed = 12;
+                        bestScore = 80000;
+                        averageScore = 60000;
+                        winRate = 0.65;
+                        gamesWon = 8;
+                        break;
+                    case 'Expert':
+                        gamesPlayed = 15;
+                        bestScore = 120000;
+                        averageScore = 90000;
+                        winRate = 0.75;
+                        gamesWon = 11;
+                        break;
+                    case 'Master':
+                        gamesPlayed = 20;
+                        bestScore = 180000;
+                        averageScore = 140000;
+                        winRate = 0.85;
+                        gamesWon = 17;
+                        break;
+                }
+
+                const userRef = window.db.collection('users').doc(email);
+
+                await userRef.set({
+                    email: email,
+                    name: 'tgallhu',
+                    gamesPlayed: gamesPlayed,
+                    bestScore: bestScore,
+                    averageScore: averageScore,
+                    highestLevel: 3,
+                    totalPlayTime: gamesPlayed * 180,
+                    totalEnemiesKilled: gamesPlayed * 50,
+                    gamesWon: gamesWon,
+                    winRate: winRate,
+                    consecutiveWins: tier === 'Master' ? 3 : (tier === 'Expert' ? 2 : 0),
+                    consecutiveLosses: 0,
+                    recentScores: [bestScore * 0.8, bestScore * 0.9, bestScore],
+                    recentAverage: bestScore * 0.9,
+                    recentGames: 3,
+                    difficultyMultiplier: multiplier,
+                    difficultyTier: tier,
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+
+                log(`✅ SUCCESS! Profile updated to ${tier} (${multiplier}x)`, '#00ff00');
+                log(`📊 Games played: ${gamesPlayed} (bypasses cap: ${gamesPlayed > 10 ? 'YES ✓' : 'NO'})`, '#ffff00');
+                log(`🎮 Best score: ${bestScore}`, '#ffff00');
+                log(`🏆 Win rate: ${(winRate * 100).toFixed(0)}%`, '#ffff00');
+                log('', '#fff');
+                log('🔄 RELOAD THE GAME PAGE to see changes!', '#ff00ff');
+
+                // Verify
+                const doc = await userRef.get();
+                const data = doc.data();
+                log('', '#fff');
+                log('✓ Verified in database:', '#00ff00');
+                log(`  - Difficulty: ${data.difficultyMultiplier}x (${data.difficultyTier})`, '#00ffff');
+                log(`  - Games: ${data.gamesPlayed}`, '#00ffff');
+                log(`  - Best: ${data.bestScore}`, '#00ffff');
+
+            } catch (error) {
+                log(`❌ Error: ${error.message}`, '#ff0000');
+                console.error(error);
+            }
+        }
+
+        // Check admin access
+        setTimeout(() => {
+            if (typeof initFirestore === 'function') {
+                initFirestore();
+                log('✓ Firestore initialized', '#00ff00');
+                log('Ready to set difficulty levels!', '#00ffff');
+            }
+        }, 500);
+    </script>
+</body>
+</html>

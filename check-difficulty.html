@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Check Player Difficulty</title>
+    <style>
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 100%);
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #00FFFF;
+            padding: 30px;
+            border-radius: 8px;
+        }
+        h1 {
+            color: #00FFFF;
+            text-align: center;
+        }
+        .search-box {
+            margin: 20px 0;
+        }
+        input {
+            background: #000;
+            color: #00FFFF;
+            border: 1px solid #00FFFF;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            width: 300px;
+        }
+        button {
+            background: #00FFFF;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        button:hover {
+            background: #00cccc;
+        }
+        .result {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid #00FFFF;
+        }
+        .result h2 {
+            color: #00FFFF;
+        }
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+        }
+        .metric-label {
+            color: #888;
+        }
+        .metric-value {
+            color: #00FFFF;
+            font-weight: bold;
+        }
+        .tier {
+            font-size: 24px;
+            color: #00FF00;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .multiplier {
+            font-size: 32px;
+            color: #00FFFF;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .error {
+            color: #ff0000;
+            padding: 10px;
+            background: rgba(255, 0, 0, 0.2);
+            border: 1px solid #ff0000;
+        }
+        .loading {
+            color: #00FFFF;
+            text-align: center;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 Check Player Difficulty</h1>
+        
+        <div class="search-box">
+            <input type="email" id="emailInput" placeholder="Enter email address" value="tgallhu@gmail.com">
+            <button onclick="checkDifficulty()">Check Difficulty</button>
+        </div>
+        
+        <div id="result"></div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="scores.js"></script>
+    <script src="difficulty.js"></script>
+
+    <script>
+        // Initialize Firestore
+        if (typeof initFirestore === 'function') {
+            initFirestore();
+        }
+
+        async function checkDifficulty() {
+            const email = document.getElementById('emailInput').value.toLowerCase().trim();
+            const resultDiv = document.getElementById('result');
+            
+            if (!email) {
+                resultDiv.innerHTML = '<div class="error">Please enter an email address</div>';
+                return;
+            }
+
+            resultDiv.innerHTML = '<div class="loading">Loading difficulty profile...</div>';
+
+            try {
+                // Wait for Firestore to initialize
+                if (!window.db && typeof initFirestore === 'function') {
+                    initFirestore();
+                    // Wait a bit for initialization
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+
+                if (!window.db) {
+                    throw new Error('Firestore not initialized');
+                }
+
+                // Load player profile
+                const profile = await loadPlayerProfile(email);
+
+                if (!profile) {
+                    resultDiv.innerHTML = `
+                        <div class="result">
+                            <h2>No Profile Found</h2>
+                            <p>No difficulty profile found for <strong>${email}</strong></p>
+                            <p>This player hasn't played yet or profile hasn't been created.</p>
+                            <p><strong>Default difficulty:</strong> 0.6 (Beginner)</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Display profile information
+                const multiplier = profile.difficultyMultiplier || 0.6;
+                const tier = profile.difficultyTier || getDifficultyTier(multiplier);
+                const gamesPlayed = profile.gamesPlayed || 0;
+                const bestScore = profile.bestScore || 0;
+                const averageScore = profile.averageScore || 0;
+                const highestLevel = profile.highestLevel || 0;
+                const winRate = profile.winRate || 0;
+
+                resultDiv.innerHTML = `
+                    <div class="result">
+                        <h2>Player: ${profile.name || email}</h2>
+                        <div class="multiplier">Difficulty Multiplier: ${multiplier.toFixed(2)}x</div>
+                        <div class="tier">Tier: ${tier}</div>
+                        
+                        <h3>Performance Metrics</h3>
+                        <div class="metric">
+                            <span class="metric-label">Games Played:</span>
+                            <span class="metric-value">${gamesPlayed}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Best Score:</span>
+                            <span class="metric-value">${bestScore.toLocaleString()}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Average Score:</span>
+                            <span class="metric-value">${averageScore.toLocaleString()}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Highest Level:</span>
+                            <span class="metric-value">${highestLevel}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Win Rate:</span>
+                            <span class="metric-value">${(winRate * 100).toFixed(1)}%</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Games Won:</span>
+                            <span class="metric-value">${profile.gamesWon || 0}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Consecutive Wins:</span>
+                            <span class="metric-value">${profile.consecutiveWins || 0}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Consecutive Losses:</span>
+                            <span class="metric-value">${profile.consecutiveLosses || 0}</span>
+                        </div>
+                        ${profile.lastUpdated ? `
+                        <div class="metric">
+                            <span class="metric-label">Last Updated:</span>
+                            <span class="metric-value">${new Date(profile.lastUpdated.toDate ? profile.lastUpdated.toDate() : profile.lastUpdated).toLocaleString()}</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading difficulty:', error);
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h3>Error</h3>
+                        <p>Failed to load difficulty profile: ${error.message}</p>
+                        <p>Make sure Firestore is initialized and you have access.</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Auto-check on page load if email is pre-filled
+        window.addEventListener('DOMContentLoaded', () => {
+            const emailInput = document.getElementById('emailInput');
+            if (emailInput.value) {
+                setTimeout(() => checkDifficulty(), 1000); // Wait for scripts to load
+            }
+        });
+    </script>
+</body>
+</html>
+

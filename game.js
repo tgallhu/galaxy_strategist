@@ -323,6 +323,66 @@ const sounds = {
             fragment.start(baseTime + delay);
             fragment.stop(baseTime + delay + 0.15);
         });
+    },
+
+    // Intensity Spike - Exciting alarm/warning sound
+    intensitySpike: (audioCtx) => {
+        // Create a dramatic rising siren with multiple layers
+        const baseTime = audioCtx.currentTime;
+
+        // Layer 1: Rising siren
+        const siren = audioCtx.createOscillator();
+        const sirenGain = audioCtx.createGain();
+        siren.type = 'triangle';
+        siren.frequency.setValueAtTime(200, baseTime);
+        siren.frequency.exponentialRampToValueAtTime(800, baseTime + 0.5);
+        siren.frequency.exponentialRampToValueAtTime(1200, baseTime + 1.0);
+        sirenGain.gain.setValueAtTime(0.15, baseTime);
+        sirenGain.gain.exponentialRampToValueAtTime(0.25, baseTime + 0.5);
+        sirenGain.gain.exponentialRampToValueAtTime(0.01, baseTime + 1.2);
+        siren.connect(sirenGain).connect(audioCtx.destination);
+        siren.start(baseTime);
+        siren.stop(baseTime + 1.2);
+
+        // Layer 2: Pulsing bass
+        for (let i = 0; i < 4; i++) {
+            const pulse = audioCtx.createOscillator();
+            const pulseGain = audioCtx.createGain();
+            pulse.type = 'square';
+            pulse.frequency.setValueAtTime(80, baseTime + i * 0.2);
+            pulseGain.gain.setValueAtTime(0, baseTime + i * 0.2);
+            pulseGain.gain.exponentialRampToValueAtTime(0.2, baseTime + i * 0.2 + 0.05);
+            pulseGain.gain.exponentialRampToValueAtTime(0.01, baseTime + i * 0.2 + 0.15);
+            pulse.connect(pulseGain).connect(audioCtx.destination);
+            pulse.start(baseTime + i * 0.2);
+            pulse.stop(baseTime + i * 0.2 + 0.15);
+        }
+
+        // Layer 3: High energy stabs
+        const stabFrequencies = [1200, 1400, 1600, 1800];
+        stabFrequencies.forEach((freq, i) => {
+            const stab = audioCtx.createOscillator();
+            const stabGain = audioCtx.createGain();
+            stab.type = 'sawtooth';
+            stab.frequency.setValueAtTime(freq, baseTime + 0.3 + i * 0.15);
+            stabGain.gain.setValueAtTime(0.18, baseTime + 0.3 + i * 0.15);
+            stabGain.gain.exponentialRampToValueAtTime(0.01, baseTime + 0.3 + i * 0.15 + 0.1);
+            stab.connect(stabGain).connect(audioCtx.destination);
+            stab.start(baseTime + 0.3 + i * 0.15);
+            stab.stop(baseTime + 0.3 + i * 0.15 + 0.1);
+        });
+
+        // Layer 4: Electric zap effect
+        const noise = audioCtx.createOscillator();
+        const noiseGain = audioCtx.createGain();
+        noise.type = 'square';
+        noise.frequency.setValueAtTime(2000, baseTime + 0.8);
+        noise.frequency.exponentialRampToValueAtTime(3000, baseTime + 1.0);
+        noiseGain.gain.setValueAtTime(0.12, baseTime + 0.8);
+        noiseGain.gain.exponentialRampToValueAtTime(0.01, baseTime + 1.1);
+        noise.connect(noiseGain).connect(audioCtx.destination);
+        noise.start(baseTime + 0.8);
+        noise.stop(baseTime + 1.1);
     }
 };
 
@@ -384,9 +444,9 @@ const ENEMY_WIDTH = 48; // Matched to sprite
 const ENEMY_HEIGHT = 32; // Matched to sprite
 const ENEMY_GAP = 15;
 let enemySpeedDirection = 1;
-const ENEMY_BULLET_SPEED = 4;
+const ENEMY_BULLET_SPEED = 3; // Reduced from 4 to make bullets slower and easier to dodge
 const ENEMY_BULLET_RADIUS = 3;
-const ENEMY_SHOOT_CHANCE = 0.002;
+const ENEMY_SHOOT_CHANCE = 0.001; // Reduced from 0.002 to make base difficulty easier
 
 
 // --- GAME OBJECTS ---
@@ -465,6 +525,14 @@ let levelAmmoUsed = 0; // Ammo used in current level
 let totalScore = 0; // Total score across all levels
 let totalEnemiesKilled = 0; // Track total enemies killed
 let initialEnemyCount = 0; // Track starting enemy count
+
+// Idle Demo Mode
+let idleDemoMode = true; // Start in demo mode
+let demoStartTime = 0;
+let demoPlayerX = 0; // Demo player position (will be initialized in updateIdleDemo)
+let demoPlayerDirection = 1; // 1 = right, -1 = left
+let demoShotTimer = 0;
+let demoPhase = 0; // Current demo phase (0 = idle, 1 = moving, 2 = shooting)
 
 // Adaptive Difficulty System
 let difficultyMultiplier = 1.0; // Base difficulty
@@ -2353,6 +2421,7 @@ function updateGameState(now) {
         }
     } else if (now > nextIntensitySpikeTime) {
         intensitySpikeActive = true;
+        playSound('intensitySpike'); // Play exciting sound when spike starts!
         const durationMultiplier = adjustedGameParams.intensitySpikeDurationMultiplier || 1.0;
         const baseDuration = 2000 + Math.random() * 3000;
         intensitySpikeEndTime = now + (baseDuration * durationMultiplier);
@@ -2409,6 +2478,153 @@ function updateGameState(now) {
 }
 
 
+// --- IDLE DEMO MODE ---
+function updateIdleDemo(now) {
+    if (demoStartTime === 0) {
+        demoStartTime = now;
+        // Initialize demo with enemies
+        createEnemies();
+        demoPlayerX = canvas.width / 2 - PLAYER_WIDTH / 2;
+        demoPlayerDirection = 1;
+        demoShotTimer = 0;
+        demoPhase = 0;
+    }
+
+    const demoElapsed = (now - demoStartTime) / 1000;
+    
+    // Move demo player back and forth
+    if (demoPhase === 0 || demoPhase === 1) {
+        const moveSpeed = 2;
+        demoPlayerX += demoPlayerDirection * moveSpeed;
+        
+        // Bounce at edges
+        if (demoPlayerX <= 0 || demoPlayerX >= canvas.width - PLAYER_WIDTH) {
+            demoPlayerDirection *= -1;
+            demoPlayerX = Math.max(0, Math.min(canvas.width - PLAYER_WIDTH, demoPlayerX));
+        }
+        
+        // Switch to shooting phase after moving for 2 seconds
+        if (demoElapsed % 8 < 3) {
+            demoPhase = 1; // Moving
+        } else if (demoElapsed % 8 < 6) {
+            demoPhase = 2; // Shooting
+        } else {
+            demoPhase = 0; // Idle
+        }
+    }
+    
+    // Auto-shoot during shooting phase
+    if (demoPhase === 2 && now - demoShotTimer > 300) {
+        demoShotTimer = now;
+        // Create demo bullets (will be drawn in drawIdleDemo)
+        if (bullets.length < 5) {
+            bullets.push({
+                x: demoPlayerX + PLAYER_WIDTH / 2,
+                y: canvas.height - PLAYER_HEIGHT - 20,
+                shotIndex: null
+            });
+        }
+    }
+    
+    // Move demo bullets
+    for (let i = bullets.length - 1; i >= 0; i--) {
+        bullets[i].y -= 8;
+        if (bullets[i].y < UI_HEIGHT) {
+            bullets.splice(i, 1);
+        }
+    }
+    
+    // Move demo enemies (simplified movement)
+    const baseSpeed = 1;
+    let hitEdge = false;
+    enemies.forEach(enemy => {
+        enemy.x += enemySpeedDirection * baseSpeed;
+        enemy.y += 0.05;
+        
+        // Check if any enemy hits the edge
+        if ((enemy.x <= 0 || enemy.x + enemy.width >= canvas.width) && !hitEdge) {
+            hitEdge = true;
+        }
+    });
+    
+    // Reverse direction if enemies hit edge
+    if (hitEdge) {
+        enemySpeedDirection *= -1;
+    }
+    
+    // Reset demo every 30 seconds
+    if (demoElapsed > 30) {
+        demoStartTime = now;
+        bullets = [];
+        enemyBullets = [];
+        createEnemies();
+        demoPlayerX = canvas.width / 2 - PLAYER_WIDTH / 2;
+        demoPlayerDirection = 1;
+        enemySpeedDirection = 1;
+    }
+}
+
+function drawIdleDemo(now) {
+    // Draw background
+    drawBackground();
+    
+    // Draw demo enemies
+    drawEnemies();
+    
+    // Draw demo bullets
+    ctx.fillStyle = '#FFFF00';
+    bullets.forEach(bullet => {
+        ctx.beginPath();
+        ctx.arc(bullet.x, bullet.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    
+    // Draw demo player at demo position
+    const demoPlayerY = canvas.height - PLAYER_HEIGHT - 20;
+    
+    // Main ship body
+    ctx.fillStyle = '#00BFFF';
+    ctx.fillRect(demoPlayerX + PLAYER_WIDTH/2 - 4, demoPlayerY, 8, 15);
+    ctx.fillRect(demoPlayerX + PLAYER_WIDTH/2 - 8, demoPlayerY + 15, 16, 10);
+    ctx.fillRect(demoPlayerX + PLAYER_WIDTH/2 - 12, demoPlayerY + 25, 24, 15);
+    
+    // Cockpit
+    ctx.fillStyle = '#FFFF00';
+    ctx.fillRect(demoPlayerX + PLAYER_WIDTH/2 - 3, demoPlayerY + 18, 6, 6);
+    
+    // Wings
+    ctx.fillStyle = '#4169E1';
+    ctx.fillRect(demoPlayerX, demoPlayerY + 30, 12, 10);
+    ctx.fillRect(demoPlayerX + PLAYER_WIDTH - 12, demoPlayerY + 30, 12, 10);
+    
+    // Engine glow
+    ctx.fillStyle = '#FF4500';
+    ctx.fillRect(demoPlayerX + 8, demoPlayerY + PLAYER_HEIGHT - 3, 10, 3);
+    ctx.fillRect(demoPlayerX + PLAYER_WIDTH - 18, demoPlayerY + PLAYER_HEIGHT - 3, 10, 3);
+    
+    // Draw title and press to start message
+    const flash = Math.sin(now / 500) > 0;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.fillRect(0, canvas.height / 2 - 60, canvas.width, 120);
+    
+    ctx.fillStyle = '#00FFFF';
+    ctx.font = 'bold 48px "Courier New"';
+    ctx.textAlign = "center";
+    ctx.fillText('GALACTIC STRATEGIST', canvas.width / 2, canvas.height / 2 - 10);
+    
+    if (flash) {
+        ctx.fillStyle = '#FFFF00';
+        ctx.font = 'bold 24px "Courier New"';
+        ctx.fillText('PRESS ANY KEY TO START', canvas.width / 2, canvas.height / 2 + 40);
+    }
+    
+    // Demo stats
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '16px "Courier New"';
+    ctx.textAlign = "left";
+    ctx.fillText('DEMO MODE', 10, canvas.height - 10);
+}
+
 // --- MAIN GAME LOOP ---
 let levelTransitioning = false;
 let gameOverSoundPlayed = false;
@@ -2417,6 +2633,14 @@ let scoreSaved = false; // Track if score has been saved
 
 function update() {
     const now = Date.now();
+
+    // Idle Demo Mode - show auto-playing demo before game starts
+    if (idleDemoMode) {
+        updateIdleDemo(now);
+        drawIdleDemo(now);
+        requestAnimationFrame(update);
+        return;
+    }
 
     // Game Over check
     if (player.lives <= 0) {
@@ -2810,6 +3034,17 @@ function update() {
 
 // --- EVENT HANDLERS ---
 function keyDown(e) {
+    // Exit demo mode if active
+    if (idleDemoMode) {
+        idleDemoMode = false;
+        demoStartTime = 0;
+        bullets = [];
+        // Start the actual game
+        startActualGame();
+        e.preventDefault();
+        return;
+    }
+    
     if (e.key === 'ArrowRight' || e.key === 'Right') {
         keys.right = true;
         if (window.telemetryRecorder) {
@@ -3026,8 +3261,10 @@ function applyDifficultyAdjustments(multiplier) {
     adjustedGameParams = {};
     
     // Enemy shooting adjustments (easier at lower multipliers)
-    // At 0.8 multiplier: 0.0012 (40% of base), at 1.0: 0.0015 (75% of base)
-    adjustedGameParams.enemyShootChance = ENEMY_SHOOT_CHANCE * (0.5 + multiplier * 0.5);
+    // Formula: starts at 0.3x for 0.6 multiplier, scales to 1.0x at 1.0, then higher
+    // At 0.6 multiplier: 0.0003 (30% of base), at 1.0: 0.001 (100% of base), at 1.3: 0.00156 (156% of base)
+    // Made easier: at 1.0 it's now 0.001 instead of the old 0.002
+    adjustedGameParams.enemyShootChance = ENEMY_SHOOT_CHANCE * (0.3 + multiplier * 0.7);
     
     // Enemy movement adjustments (slower at default)
     // At 0.8 multiplier: 1.04x (4% faster), at 1.0: 1.15x (15% faster)
@@ -3038,8 +3275,9 @@ function applyDifficultyAdjustments(multiplier) {
     adjustedGameParams.enemyAdvanceSpeed = (ENEMY_HEIGHT / 4) * (0.9 + multiplier * 0.25);
     
     // Enemy bullet adjustments (slower at default)
-    // At 0.8 multiplier: 3.36 (16% slower), at 1.0: 3.6 (10% slower)
-    adjustedGameParams.enemyBulletSpeed = ENEMY_BULLET_SPEED * (0.8 + multiplier * 0.3);
+    // Formula: At 0.6 multiplier: 2.4 (slowest), at 1.0: 3.0 (base), scales up from there
+    // At 0.6 multiplier: 2.4 (20% slower), at 1.0: 3.0 (base), at 1.3: 3.45 (15% faster)
+    adjustedGameParams.enemyBulletSpeed = ENEMY_BULLET_SPEED * (0.75 + multiplier * 0.25);
     // At 0.8 multiplier: 24 (20% less damage), at 1.0: 27 (10% less)
     adjustedGameParams.enemyBulletDamage = ENEMY_BULLET_DAMAGE * (0.8 + multiplier * 0.3);
     
@@ -3057,20 +3295,28 @@ function applyDifficultyAdjustments(multiplier) {
     adjustedGameParams.shieldRechargeRate = 0.05 * (1.0 - multiplier * 0.3);
     adjustedGameParams.maxShield = Math.max(80, 100 - Math.floor(multiplier * 5));
     
-    // Player movement (slight reduction)
-    adjustedGameParams.playerSpeed = PLAYER_SPEED * (1.0 - multiplier * 0.15);
+    // Player movement (slight reduction) - reduced penalty from 15% to 8% per multiplier
+    // At 2.5x: 20% slower instead of 27.5% - maintains player agency
+    adjustedGameParams.playerSpeed = PLAYER_SPEED * (1.0 - multiplier * 0.08);
     
-    // Starting resources (only at very high difficulty)
-    if (multiplier > 1.5) {
+    // Starting resources (gradual reduction at higher difficulties)
+    if (multiplier > 2.0) {
+        // Master tier: 2 lives, 0 grenades
         adjustedGameParams.startingLives = 2;
         adjustedGameParams.startingGrenades = 0;
+    } else if (multiplier > 1.8) {
+        // Expert tier: 2 lives, 1 grenade (intermediate step)
+        adjustedGameParams.startingLives = 2;
+        adjustedGameParams.startingGrenades = 1;
     } else {
+        // Normal/Advanced tier: 3 lives, 1 grenade
         adjustedGameParams.startingLives = 3;
         adjustedGameParams.startingGrenades = 1;
     }
     
     // Powerup adjustments (fewer drops at higher difficulty, but more at easier)
-    adjustedGameParams.powerupDropMultiplier = 1.2 - multiplier * 0.4; // At 0.8: 1.08x (more), at 1.0: 1.0x (base)
+    // Reduced penalty: At 0.6: 1.05x, at 1.0: 0.95x, at 2.5: 0.575x (was 0.2x = too harsh)
+    adjustedGameParams.powerupDropMultiplier = 1.2 - multiplier * 0.25;
     
     // Powerup fall speed (slower at easier difficulties - easier to catch)
     // At 0.8 multiplier: 1.4 (30% slower), at 1.0: 1.8 (10% slower), at 1.5+: 2.0+ (faster)
@@ -3086,8 +3332,8 @@ function applyDifficultyAdjustments(multiplier) {
     adjustedGameParams.enemyCountMultiplier = 1.0 + multiplier * 0.3;
     adjustedGameParams.enemyGap = Math.max(10, ENEMY_GAP - multiplier * 1.0);
     
-    // Level shooting intensity multiplier
-    adjustedGameParams.levelShootingIntensityMultiplier = 1.0 + multiplier * 0.4;
+    // Level shooting intensity multiplier (reduced to make it easier at lower difficulties)
+    adjustedGameParams.levelShootingIntensityMultiplier = 0.8 + multiplier * 0.3; // At 1.0: 1.1x (was 1.4x)
     
     console.log(`🎯 Applied difficulty multiplier: ${multiplier.toFixed(2)} (${getDifficultyTierName(multiplier)})`);
     
@@ -3191,7 +3437,7 @@ function applyPlayerDifficulty() {
 async function loadAndApplyDifficulty() {
     if (!window.currentUser || typeof window.difficultyManager === 'undefined') {
         console.log('⚠️ No user or difficulty manager available, using easier default difficulty');
-        applyDifficultyAdjustments(0.7); // Easier default
+        applyDifficultyAdjustments(0.6); // Beginner-friendly default
         applyPlayerDifficulty();
         return;
     }
@@ -3269,98 +3515,159 @@ if (!enforceLevel1()) {
     console.log(`✅ Level 1 verified: "${LEVELS[1].name}" (${LEVELS[1].formation} formation)`);
 }
 
-// Load and apply difficulty before initializing game
-loadAndApplyDifficulty().then(() => {
-    // FORCE currentLevel to 1 again after async operations (safety check)
-    if (currentLevel !== 1) {
-        console.warn(`⚠️ WARNING: currentLevel was ${currentLevel}, forcing back to 1`);
-        currentLevel = 1;
-    }
-    
-    console.log(`🔍 currentLevel after difficulty load: ${currentLevel}`);
-    console.log(`🔍 Level 1 exists:`, LEVELS[1] ? 'YES' : 'NO');
-    console.log(`🔍 Level 1 name:`, LEVELS[1] ? LEVELS[1].name : 'NOT FOUND');
-    
-    // Verify currentLevel before starting
-    console.log(`🚀 Starting game at Level ${currentLevel}`);
-    console.log(`📍 Level definition:`, LEVELS[currentLevel] ? LEVELS[currentLevel].name : 'NOT FOUND!');
-    
-    // ABSOLUTELY ensure we're at Level 1
-    if (currentLevel !== 1) {
-        console.error(`❌ ERROR: currentLevel is ${currentLevel}, should be 1! Forcing reset...`);
-        currentLevel = 1;
-    }
-    
-    // ABSOLUTELY ensure we're at Level 1 before proceeding
-    if (!enforceLevel1()) {
-        console.error('❌ CRITICAL: Cannot enforce Level 1!');
-        return;
-    }
-    
-    // Initialize shields based on level (must be after applyPlayerDifficulty)
-    // Level 1: Shields MUST be OFFLINE (0)
-    player.shield = 0;
-    player.maxShield = 100; // Keep max value for later levels, but current is 0
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('❌ SHIELDS: OFFLINE for Level 1 (Training Mode)');
-    console.log(`   player.shield = ${player.shield}`);
-    console.log(`   player.maxShield = ${player.maxShield}`);
-    console.log(`   currentLevel = ${currentLevel}`);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    
-    console.log(`🔍 About to create enemies for Level ${currentLevel}`);
-    createEnemies();
-    console.log(`✅ Created ${enemies.length} enemies for Level ${currentLevel}`);
-    if (LEVELS[currentLevel]) {
-        console.log(`   Level name: "${LEVELS[currentLevel].name}"`);
-        console.log(`   Formation: "${LEVELS[currentLevel].formation}"`);
-    }
-    
-    gameStartTime = Date.now();
-    levelStartTime = Date.now(); // Initialize level start time
-
-    // Start telemetry recording
-    if (window.telemetryRecorder) {
-        // Try to get user from multiple sources
-        let userEmail = null;
-        let userName = null;
+// Function to start the actual game (called when demo mode exits)
+function startActualGame() {
+    // Load difficulty first, but ensure it's not too hard for new starts
+    loadAndApplyDifficulty().then(() => {
+        // Ensure difficulty is reasonable for game start - always start easier after demo
+        // Reset to beginner-friendly difficulty to avoid too competitive start
+        const currentMultiplier = difficultyMultiplier;
         
-        if (window.currentUser && window.currentUser.email) {
-            userEmail = window.currentUser.email;
-            userName = window.currentUser.name;
-        } else if (typeof getCurrentUser === 'function') {
-            try {
-                const currentUser = getCurrentUser();
-                if (currentUser && currentUser.email) {
-                    userEmail = currentUser.email;
-                    userName = currentUser.name;
+        if (!playerDifficultyProfile || playerDifficultyProfile.gamesPlayed === 0) {
+            // New player - use easier default (0.6 for very beginner-friendly)
+            console.log('📊 New player detected - using beginner-friendly difficulty (0.6)');
+            applyDifficultyAdjustments(0.6); // Very easy for first games
+            applyPlayerDifficulty();
+        } else {
+            // Existing player - progressive cap based on experience
+            const profileMultiplier = playerDifficultyProfile.difficultyMultiplier || 0.7;
+            const gamesPlayed = playerDifficultyProfile.gamesPlayed || 0;
+
+            // Progressive difficulty cap:
+            // Games 1-5: cap at 0.8x (learning phase)
+            // Games 6-10: cap at 1.2x (intermediate phase)
+            // Games 11+: no cap (experienced phase)
+            let diffCap = 2.5; // Default: no cap
+            if (gamesPlayed <= 5) {
+                diffCap = 0.8;
+                console.log('📊 Learning phase (games 1-5): difficulty capped at 0.8x');
+            } else if (gamesPlayed <= 10) {
+                diffCap = 1.2;
+                console.log('📊 Intermediate phase (games 6-10): difficulty capped at 1.2x');
+            } else {
+                console.log('📊 Experienced phase (games 11+): no difficulty cap');
+            }
+
+            const cappedMultiplier = Math.min(diffCap, Math.max(0.6, profileMultiplier));
+            console.log(`📊 Starting difficulty: ${cappedMultiplier.toFixed(2)} (profile: ${profileMultiplier.toFixed(2)}, cap: ${diffCap}x)`);
+            applyDifficultyAdjustments(cappedMultiplier);
+            applyPlayerDifficulty();
+        }
+        // FORCE currentLevel to 1 again after async operations (safety check)
+        if (currentLevel !== 1) {
+            console.warn(`⚠️ WARNING: currentLevel was ${currentLevel}, forcing back to 1`);
+            currentLevel = 1;
+        }
+        
+        console.log(`🔍 currentLevel after difficulty load: ${currentLevel}`);
+        console.log(`🔍 Level 1 exists:`, LEVELS[1] ? 'YES' : 'NO');
+        console.log(`🔍 Level 1 name:`, LEVELS[1] ? LEVELS[1].name : 'NOT FOUND');
+        
+        // Verify currentLevel before starting
+        console.log(`🚀 Starting game at Level ${currentLevel}`);
+        console.log(`📍 Level definition:`, LEVELS[currentLevel] ? LEVELS[currentLevel].name : 'NOT FOUND!');
+        
+        // ABSOLUTELY ensure we're at Level 1
+        if (currentLevel !== 1) {
+            console.error(`❌ ERROR: currentLevel is ${currentLevel}, should be 1! Forcing reset...`);
+            currentLevel = 1;
+        }
+        
+        // ABSOLUTELY ensure we're at Level 1 before proceeding
+        if (!enforceLevel1()) {
+            console.error('❌ CRITICAL: Cannot enforce Level 1!');
+            return;
+        }
+        
+        // Initialize shields based on level (must be after applyPlayerDifficulty)
+        // Level 1: Shields MUST be OFFLINE (0)
+        player.shield = 0;
+        player.maxShield = 100; // Keep max value for later levels, but current is 0
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('❌ SHIELDS: OFFLINE for Level 1 (Training Mode)');
+        console.log(`   player.shield = ${player.shield}`);
+        console.log(`   player.maxShield = ${player.maxShield}`);
+        console.log(`   currentLevel = ${currentLevel}`);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        
+        console.log(`🔍 About to create enemies for Level ${currentLevel}`);
+        createEnemies();
+        console.log(`✅ Created ${enemies.length} enemies for Level ${currentLevel}`);
+        if (LEVELS[currentLevel]) {
+            console.log(`   Level name: "${LEVELS[currentLevel].name}"`);
+            console.log(`   Formation: "${LEVELS[currentLevel].formation}"`);
+        }
+        
+        // Reset game state
+        bullets = [];
+        enemyBullets = [];
+        powerups = [];
+        grenades = [];
+        totalAmmoUsed = 0;
+        levelAmmoUsed = 0;
+        totalScore = 0;
+        totalEnemiesKilled = 0;
+        gameOverSoundPlayed = false;
+        victorySoundPlayed = false;
+        scoreSaved = false;
+        
+        gameStartTime = Date.now();
+        levelStartTime = Date.now(); // Initialize level start time
+
+        // Start telemetry recording
+        if (window.telemetryRecorder) {
+            // Try to get user from multiple sources
+            let userEmail = null;
+            let userName = null;
+            
+            if (window.currentUser && window.currentUser.email) {
+                userEmail = window.currentUser.email;
+                userName = window.currentUser.name;
+            } else if (typeof getCurrentUser === 'function') {
+                try {
+                    const currentUser = getCurrentUser();
+                    if (currentUser && currentUser.email) {
+                        userEmail = currentUser.email;
+                        userName = currentUser.name;
+                    }
+                } catch (e) {
+                    console.warn('⚠️ Could not get user for telemetry:', e);
                 }
-            } catch (e) {
-                console.warn('⚠️ Could not get user for telemetry:', e);
+            }
+            
+            if (userEmail) {
+                window.telemetryRecorder.startRecording(userEmail, userName);
+                console.log('📊 Telemetry recording started for:', userEmail);
+            } else {
+                console.warn('⚠️ Telemetry recording not started: No user email available');
+                console.log('   window.currentUser:', window.currentUser);
             }
         }
-        
-        if (userEmail) {
-            window.telemetryRecorder.startRecording(userEmail, userName);
-            console.log('📊 Telemetry recording started for:', userEmail);
-        } else {
-            console.warn('⚠️ Telemetry recording not started: No user email available');
-            console.log('   window.currentUser:', window.currentUser);
-        }
-    }
 
-    // Set intensity spike timing with difficulty adjustments
-    const intervalMin = adjustedGameParams.intensitySpikeIntervalMin || 5000;
-    const intervalMax = adjustedGameParams.intensitySpikeIntervalMax || 10000;
-    nextIntensitySpikeTime = gameStartTime + intervalMin + Math.random() * (intervalMax - intervalMin);
-    
-    // Start game loop
-    update();
+        // Set intensity spike timing with difficulty adjustments
+        const intervalMin = adjustedGameParams.intensitySpikeIntervalMin || 5000;
+        const intervalMax = adjustedGameParams.intensitySpikeIntervalMax || 10000;
+        nextIntensitySpikeTime = gameStartTime + intervalMin + Math.random() * (intervalMax - intervalMin);
+        
+        // Start game loop
+        update();
+    });
+}
+
+// Load difficulty in background (for when game actually starts)
+loadAndApplyDifficulty().then(() => {
+    console.log('✅ Difficulty loaded. Ready to start game when demo mode exits.');
 });
 
-// Fallback: Start game if difficulty loading takes too long
+// Start demo mode immediately (don't wait for difficulty loading)
+console.log('🎮 Starting idle demo mode...');
+// Start the update loop - it will show demo mode since idleDemoMode = true
+update();
+
+// Fallback: Only applies if demo mode has been exited (game started)
+// Demo mode prevents automatic game start
 setTimeout(() => {
-    if (gameStartTime === 0) {
+    if (gameStartTime === 0 && !idleDemoMode) {
         console.log('⚠️ Difficulty loading timeout, starting with default difficulty...');
         applyDifficultyAdjustments(0.7); // Easier default
         applyPlayerDifficulty();

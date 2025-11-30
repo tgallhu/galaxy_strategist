@@ -28,7 +28,7 @@ function createDefaultProfile(email, name) {
         recentGames: 0,
         
         // Calculated difficulty (easier default)
-        difficultyMultiplier: 0.7, // Easier default for new players
+        difficultyMultiplier: 0.6, // Very beginner-friendly default for new players
         difficultyTier: "Beginner",
         
         // Timestamps
@@ -39,10 +39,27 @@ function createDefaultProfile(email, name) {
 
 // Calculate difficulty multiplier based on player profile
 function calculateDifficultyMultiplier(profile) {
-    let multiplier = 1.0; // Base difficulty
+    // Check if this is a brand new profile (all metrics at zero/default)
+    const isNewProfile = (
+        (!profile.gamesPlayed || profile.gamesPlayed === 0) &&
+        (!profile.bestScore || profile.bestScore === 0) &&
+        (!profile.averageScore || profile.averageScore === 0) &&
+        (!profile.gamesWon || profile.gamesWon === 0) &&
+        (!profile.winRate || profile.winRate === 0) &&
+        (!profile.consecutiveWins || profile.consecutiveWins === 0) &&
+        (!profile.recentAverage || profile.recentAverage === 0)
+    );
+    
+    // For brand new profiles, return the default beginner-friendly difficulty
+    if (isNewProfile) {
+        return 0.6; // Very beginner-friendly default
+    }
+    
+    // For existing profiles, calculate based on performance
+    let multiplier = 1.0; // Base difficulty for players with some experience
     
     // Games played bonus (+0.05 per 5 games, max +0.5)
-    const gamesPlayedBonus = Math.min(0.5, Math.floor(profile.gamesPlayed / 5) * 0.05);
+    const gamesPlayedBonus = Math.min(0.5, Math.floor((profile.gamesPlayed || 0) / 5) * 0.05);
     multiplier += gamesPlayedBonus;
     
     // Score performance (baseline = 50,000, +0.1 per 10k above, max +0.5)
@@ -51,15 +68,16 @@ function calculateDifficultyMultiplier(profile) {
         multiplier += scoreBonus;
     }
     
-    // Win rate bonus
-    if (profile.winRate > 0.75) {
-        multiplier += 0.2;
-    } else if (profile.winRate > 0.50) {
-        multiplier += 0.1;
+    // Win rate bonus - smooth scaling instead of binary thresholds
+    // At 50% win rate: 0 bonus, at 100% win rate: +0.2 bonus
+    // Formula: (winRate - 0.5) * 0.4 gives smooth progression
+    if (profile.winRate > 0.5) {
+        const winRateBonus = Math.min(0.2, (profile.winRate - 0.5) * 0.4);
+        multiplier += winRateBonus;
     }
     
     // Consecutive wins bonus (+0.05 per win, max +0.3)
-    const consecutiveWinBonus = Math.min(0.3, profile.consecutiveWins * 0.05);
+    const consecutiveWinBonus = Math.min(0.3, (profile.consecutiveWins || 0) * 0.05);
     multiplier += consecutiveWinBonus;
     
     // Recent performance bonus (if recent average is significantly higher)
@@ -70,16 +88,16 @@ function calculateDifficultyMultiplier(profile) {
         }
     }
     
-    // Decay mechanism: Reduce difficulty if struggling
+    // Decay mechanism: Reduce difficulty if struggling (strengthened to help players faster)
     if (profile.consecutiveLosses >= 3) {
-        multiplier -= 0.1; // Reduce difficulty after 3 consecutive losses
+        multiplier -= 0.15; // Reduce difficulty after 3 consecutive losses (was 0.1)
     }
     if (profile.consecutiveLosses >= 5) {
-        multiplier -= 0.1; // Further reduction after 5 losses
+        multiplier -= 0.2; // Further reduction after 5 losses (was 0.1) - total -0.35
     }
     
-    // Cap between 0.7 (very easy) and 2.5 (very hard)
-    multiplier = Math.max(0.7, Math.min(2.5, multiplier));
+    // Cap between 0.6 (very easy - beginner default) and 2.5 (very hard)
+    multiplier = Math.max(0.6, Math.min(2.5, multiplier));
     
     return multiplier;
 }
@@ -297,10 +315,9 @@ function logPlayerProfileMetrics(profile) {
         if (scoreBonus > 0) breakdown += ` + Score: +${scoreBonus.toFixed(2)}`;
     }
     
-    if (profile.winRate > 0.75) {
-        breakdown += ' + WinRate: +0.20';
-    } else if (profile.winRate > 0.50) {
-        breakdown += ' + WinRate: +0.10';
+    if (profile.winRate > 0.5) {
+        const winRateBonus = Math.min(0.2, (profile.winRate - 0.5) * 0.4);
+        if (winRateBonus > 0) breakdown += ` + WinRate: +${winRateBonus.toFixed(2)}`;
     }
     
     if (profile.consecutiveWins > 0) {
@@ -309,9 +326,9 @@ function logPlayerProfileMetrics(profile) {
     }
     
     if (profile.consecutiveLosses >= 3) {
-        breakdown += ' + Decay: -0.10';
+        breakdown += ' + Decay: -0.15';
         if (profile.consecutiveLosses >= 5) {
-            breakdown += ' (additional -0.10)';
+            breakdown += ' (additional -0.20)';
         }
     }
     

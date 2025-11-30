@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clear Firebase Data - Admin Tool</title>
+    <link rel="stylesheet" href="../style.css">
+    <style>
+        .container {
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 30px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #00FFFF;
+        }
+        h1 {
+            color: #00FFFF;
+            text-align: center;
+        }
+        .warning {
+            background: rgba(255, 0, 0, 0.2);
+            border: 2px solid #ff0000;
+            padding: 20px;
+            margin: 20px 0;
+            color: #ff6666;
+        }
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #00FFFF;
+            background: rgba(0, 255, 255, 0.05);
+        }
+        .collection-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #666;
+            background: rgba(0, 0, 0, 0.3);
+        }
+        button {
+            background: #00FFFF;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #00cccc;
+        }
+        button.danger {
+            background: #ff0000;
+            color: #fff;
+        }
+        button.danger:hover {
+            background: #cc0000;
+        }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        .count {
+            color: #00FFFF;
+            font-weight: bold;
+        }
+        #output {
+            margin-top: 20px;
+            padding: 15px;
+            background: #000;
+            border: 1px solid #00FFFF;
+            color: #0f0;
+            font-family: 'Courier New', monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .filter-group {
+            margin: 15px 0;
+        }
+        input, select {
+            background: #000;
+            color: #00FFFF;
+            border: 1px solid #00FFFF;
+            padding: 8px;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🗑️ Clear Firebase Data</h1>
+
+        <div class="warning">
+            <h2>⚠️ WARNING</h2>
+            <p>This tool permanently deletes data from Firestore. This action CANNOT be undone!</p>
+            <p>Only use this for clearing test data. Do not use in production without a backup!</p>
+        </div>
+
+        <div class="section">
+            <h2>Data Overview</h2>
+            <div id="dataOverview">Loading...</div>
+            <button onclick="loadDataCounts()">🔄 Refresh Counts</button>
+        </div>
+
+        <div class="section">
+            <h2>Clear by Collection</h2>
+
+            <div class="collection-item">
+                <div>
+                    <strong>Telemetry</strong> <span class="count" id="telemetryCount">-</span>
+                    <br><small>Gameplay analytics data</small>
+                </div>
+                <button onclick="clearCollection('telemetry')" class="danger">Delete All</button>
+            </div>
+
+            <div class="collection-item">
+                <div>
+                    <strong>Scores</strong> <span class="count" id="scoresCount">-</span>
+                    <br><small>Player scores and leaderboard</small>
+                </div>
+                <button onclick="clearCollection('scores')" class="danger">Delete All</button>
+            </div>
+
+            <div class="collection-item">
+                <div>
+                    <strong>Notifications</strong> <span class="count" id="notificationsCount">-</span>
+                    <br><small>Notification history</small>
+                </div>
+                <button onclick="clearCollection('notifications')" class="danger">Delete All</button>
+            </div>
+
+            <div class="collection-item">
+                <div>
+                    <strong>FCM Tokens</strong> <span class="count" id="fcmTokensCount">-</span>
+                    <br><small>Push notification tokens</small>
+                </div>
+                <button onclick="clearCollection('fcm_tokens')" class="danger">Delete All</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Clear by Email</h2>
+            <div class="filter-group">
+                <label>Email: <input type="email" id="emailFilter" placeholder="user@example.com"></label>
+                <button onclick="clearByEmail()" class="danger">Delete User Data</button>
+            </div>
+            <small>Deletes telemetry and scores for specific user</small>
+        </div>
+
+        <div class="section">
+            <h2>Clear by Date Range</h2>
+            <div class="filter-group">
+                <label>From: <input type="date" id="dateFrom"></label>
+                <label>To: <input type="date" id="dateTo"></label>
+                <button onclick="clearByDateRange()" class="danger">Delete Date Range</button>
+            </div>
+            <small>Deletes telemetry and scores within date range</small>
+        </div>
+
+        <div class="section">
+            <h2>⚠️ DANGER ZONE</h2>
+            <button onclick="clearAllData()" class="danger" style="width: 100%; padding: 15px; font-size: 16px;">
+                🔥 DELETE ALL DATA FROM ALL COLLECTIONS
+            </button>
+        </div>
+
+        <div id="output"></div>
+    </div>
+
+    <!-- Scripts - Load in correct order -->
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
+    <script src="../firebase-config.js"></script>
+    <script src="../whitelist.js"></script>  <!-- Must load before auth.js -->
+    <script src="../admin-whitelist.js"></script>
+    <script src="../auth.js"></script>
+    <script src="../scores.js"></script>
+
+    <script>
+        // Check admin access - wait for scripts to load
+        let accessGranted = false;
+        
+        function checkAccess() {
+            try {
+                if (typeof getCurrentUser !== 'function' || typeof isAdminEmail !== 'function') {
+                    // Scripts not loaded yet, wait
+                    setTimeout(checkAccess, 100);
+                    return false;
+                }
+                
+                const currentUser = getCurrentUser();
+                if (!currentUser) {
+                    document.body.innerHTML = `
+                        <div style="text-align: center; padding: 50px; color: #ff0000;">
+                            <h1>❌ Access Denied</h1>
+                            <p>You must be logged in to access this tool.</p>
+                            <a href="../login.html" style="color: #00FFFF;">Login</a> | 
+                            <a href="../index.html" style="color: #00FFFF;">Back to Game</a>
+                        </div>
+                    `;
+                    return false;
+                }
+                
+                if (!isAdminEmail(currentUser.email)) {
+                    document.body.innerHTML = `
+                        <div style="text-align: center; padding: 50px; color: #ff0000;">
+                            <h1>❌ Access Denied</h1>
+                            <p>Only administrators can access this tool.</p>
+                            <a href="../index.html" style="color: #00FFFF;">← Back to Game</a>
+                        </div>
+                    `;
+                    return false;
+                }
+                
+                // Access granted
+                accessGranted = true;
+                if (typeof initFirestore === 'function') {
+                    initFirestore();
+                }
+                return true;
+            } catch (error) {
+                console.error('Error checking admin access:', error);
+                document.body.innerHTML = `
+                    <div style="text-align: center; padding: 50px; color: #ff0000;">
+                        <h1>❌ Error</h1>
+                        <p>Failed to check admin access: ${error.message}</p>
+                        <a href="../index.html" style="color: #00FFFF;">← Back to Game</a>
+                    </div>
+                `;
+                return false;
+            }
+        }
+
+        function log(message, type = 'info') {
+            const output = document.getElementById('output');
+            if (!output) {
+                console.log(`[LOG] ${message}`);
+                return;
+            }
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? '#ff0000' : type === 'success' ? '#00ff00' : '#00FFFF';
+            output.innerHTML += `<div style="color: ${color}">[${timestamp}] ${message}</div>`;
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        // Check access after all scripts load
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', checkAccess);
+        } else {
+            // Already loaded
+            setTimeout(checkAccess, 100); // Small delay to ensure all scripts are ready
+        }
+
+        async function loadDataCounts() {
+            log('Loading data counts...');
+            const collections = ['telemetry', 'scores', 'notifications', 'fcm_tokens'];
+
+            for (const collection of collections) {
+                try {
+                    const snapshot = await window.db.collection(collection).get();
+                    const count = snapshot.size;
+                    document.getElementById(`${collection.replace('_', '')}Count`).textContent = `(${count} documents)`;
+                    log(`${collection}: ${count} documents`);
+                } catch (error) {
+                    log(`Error loading ${collection}: ${error.message}`, 'error');
+                }
+            }
+        }
+
+        async function clearCollection(collectionName) {
+            const confirmed = confirm(`⚠️ DELETE ALL DATA from "${collectionName}"?\n\nThis will permanently delete ALL documents in this collection.\n\nType "DELETE" in the next prompt to confirm.`);
+            if (!confirmed) return;
+
+            const confirmation = prompt('Type DELETE to confirm:');
+            if (confirmation !== 'DELETE') {
+                log('Deletion cancelled', 'error');
+                return;
+            }
+
+            log(`Deleting all documents from ${collectionName}...`);
+
+            try {
+                const snapshot = await window.db.collection(collectionName).get();
+                const batchSize = 500;
+                let deleted = 0;
+
+                while (deleted < snapshot.size) {
+                    const batch = window.db.batch();
+                    const docs = await window.db.collection(collectionName).limit(batchSize).get();
+
+                    docs.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+
+                    await batch.commit();
+                    deleted += docs.size;
+                    log(`Deleted ${deleted}/${snapshot.size} documents from ${collectionName}...`);
+
+                    if (docs.size === 0) break;
+                }
+
+                log(`✅ Successfully deleted ${deleted} documents from ${collectionName}`, 'success');
+                await loadDataCounts();
+            } catch (error) {
+                log(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function clearByEmail() {
+            const email = document.getElementById('emailFilter').value.toLowerCase().trim();
+            if (!email) {
+                alert('Please enter an email address');
+                return;
+            }
+
+            const confirmed = confirm(`Delete all data for ${email}?\n\nThis will delete:\n- All telemetry sessions\n- All scores\n\nType "DELETE" to confirm.`);
+            if (!confirmed) return;
+
+            const confirmation = prompt('Type DELETE to confirm:');
+            if (confirmation !== 'DELETE') {
+                log('Deletion cancelled', 'error');
+                return;
+            }
+
+            log(`Deleting data for ${email}...`);
+
+            try {
+                // Delete user profile (difficulty profile) FIRST
+                try {
+                    const userDocRef = window.db.collection('users').doc(email);
+                    const userDoc = await userDocRef.get();
+                    if (userDoc.exists) {
+                        await userDocRef.delete();
+                        log(`✅ Deleted user profile (difficulty profile) for ${email}`, 'success');
+                    } else {
+                        log(`No user profile found for ${email}`);
+                    }
+                } catch (error) {
+                    log(`Error deleting user profile: ${error.message}`, 'error');
+                }
+
+                // Delete telemetry
+                const telemetrySnapshot = await window.db.collection('telemetry').where('playerEmail', '==', email).get();
+                if (telemetrySnapshot.size > 0) {
+                    const batch1 = window.db.batch();
+                    telemetrySnapshot.forEach(doc => batch1.delete(doc.ref));
+                    await batch1.commit();
+                    log(`Deleted ${telemetrySnapshot.size} telemetry documents`);
+                } else {
+                    log(`No telemetry found for ${email}`);
+                }
+
+                // Delete scores
+                const scoresSnapshot = await window.db.collection('scores').where('email', '==', email).get();
+                if (scoresSnapshot.size > 0) {
+                    const batch2 = window.db.batch();
+                    scoresSnapshot.forEach(doc => batch2.delete(doc.ref));
+                    await batch2.commit();
+                    log(`Deleted ${scoresSnapshot.size} score documents`);
+                } else {
+                    log(`No scores found for ${email}`);
+                }
+
+                log(`✅ Successfully deleted all data for ${email}`, 'success');
+                await loadDataCounts();
+            } catch (error) {
+                log(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function clearByDateRange() {
+            const from = document.getElementById('dateFrom').value;
+            const to = document.getElementById('dateTo').value;
+
+            if (!from || !to) {
+                alert('Please select both start and end dates');
+                return;
+            }
+
+            const fromDate = new Date(from);
+            const toDate = new Date(to);
+            toDate.setHours(23, 59, 59, 999); // End of day
+
+            const confirmed = confirm(`Delete data from ${from} to ${to}?\n\nType "DELETE" to confirm.`);
+            if (!confirmed) return;
+
+            const confirmation = prompt('Type DELETE to confirm:');
+            if (confirmation !== 'DELETE') {
+                log('Deletion cancelled', 'error');
+                return;
+            }
+
+            log(`Deleting data from ${from} to ${to}...`);
+
+            try {
+                // Delete telemetry by timestamp
+                const telemetrySnapshot = await window.db.collection('telemetry')
+                    .where('timestamp', '>=', fromDate.toISOString())
+                    .where('timestamp', '<=', toDate.toISOString())
+                    .get();
+
+                const batch1 = window.db.batch();
+                telemetrySnapshot.forEach(doc => batch1.delete(doc.ref));
+                await batch1.commit();
+                log(`Deleted ${telemetrySnapshot.size} telemetry documents`);
+
+                log(`✅ Successfully deleted data in date range`, 'success');
+                await loadDataCounts();
+            } catch (error) {
+                log(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function clearAllData() {
+            const confirmed = confirm('⚠️⚠️⚠️ DELETE ALL DATA FROM ALL COLLECTIONS? ⚠️⚠️⚠️\n\nThis will delete:\n- All telemetry\n- All scores\n- All notifications\n- All FCM tokens\n\nTHIS CANNOT BE UNDONE!\n\nType "DELETE ALL" to confirm.');
+            if (!confirmed) return;
+
+            const confirmation = prompt('Type "DELETE ALL" to confirm (case sensitive):');
+            if (confirmation !== 'DELETE ALL') {
+                log('Deletion cancelled', 'error');
+                return;
+            }
+
+            log('⚠️ DELETING ALL DATA...', 'error');
+
+            const collections = ['telemetry', 'scores', 'notifications', 'fcm_tokens'];
+
+            for (const collection of collections) {
+                await clearCollection(collection);
+            }
+
+            log('✅ All data deleted', 'success');
+        }
+
+        // Wait for page to load, then check access and load data
+        window.addEventListener('DOMContentLoaded', () => {
+            // Check access first
+            if (checkAccess()) {
+                // Small delay to ensure Firestore is initialized
+                setTimeout(() => {
+                    loadDataCounts();
+                }, 500);
+            }
+        });
+    </script>
+</body>
+</html>
