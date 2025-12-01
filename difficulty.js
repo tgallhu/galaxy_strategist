@@ -6,10 +6,13 @@
 
 // Player profile structure
 function createDefaultProfile(email, name) {
+    const isAnonymous = email.includes('@auto.generated');
+
     return {
         email: email.toLowerCase(),
         name: name,
-        
+        isAnonymous: isAnonymous,
+
         // Performance metrics
         gamesPlayed: 0,
         bestScore: 0,
@@ -21,17 +24,18 @@ function createDefaultProfile(email, name) {
         winRate: 0,
         consecutiveWins: 0,
         consecutiveLosses: 0,
-        
+
         // Recent performance (last 10 games)
         recentScores: [],
         recentAverage: 0,
         recentGames: 0,
-        
+
         // Calculated difficulty (easier default)
         difficultyMultiplier: 0.6, // Very beginner-friendly default for new players
         difficultyTier: "Beginner",
-        
+
         // Timestamps
+        lastActivity: firebase.firestore.FieldValue.serverTimestamp(),
         lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
     };
@@ -150,21 +154,22 @@ async function savePlayerProfile(profile) {
             return { success: false, message: 'Database not available' };
         }
     }
-    
+
     try {
         // Recalculate difficulty multiplier before saving
         profile.difficultyMultiplier = calculateDifficultyMultiplier(profile);
         profile.difficultyTier = getDifficultyTier(profile.difficultyMultiplier);
+        profile.lastActivity = firebase.firestore.FieldValue.serverTimestamp();
         profile.lastUpdated = firebase.firestore.FieldValue.serverTimestamp();
-        
+
         const docRef = window.db.collection('users').doc(profile.email.toLowerCase());
         await docRef.set(profile, { merge: true });
-        
+
         console.log('💾 Saved player profile:', profile.email, 'Difficulty:', profile.difficultyMultiplier, profile.difficultyTier);
-        
+
         // Log updated profile metrics
         logPlayerProfileMetrics(profile);
-        
+
         return { success: true };
     } catch (error) {
         console.error('❌ Error saving player profile:', error);
@@ -346,6 +351,49 @@ function logPlayerProfileMetrics(profile) {
     console.groupEnd();
 }
 
+// Cleanup old anonymous profiles (5+ days inactive)
+async function cleanupOldAnonymousProfiles(daysInactive = 5) {
+    if (!window.db) {
+        if (!initFirestore()) {
+            console.error('Cannot cleanup profiles: Firestore not initialized');
+            return { success: false, message: 'Database not available' };
+        }
+    }
+
+    try {
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - daysInactive);
+
+        console.log(`🧹 Cleaning up anonymous profiles inactive since ${cutoffDate.toISOString()}`);
+
+        const snapshot = await window.db.collection('users')
+            .where('isAnonymous', '==', true)
+            .where('lastActivity', '<', cutoffDate)
+            .get();
+
+        let deletedCount = 0;
+        const batch = window.db.batch();
+
+        snapshot.forEach(doc => {
+            console.log(`  Deleting old anonymous profile: ${doc.id}`);
+            batch.delete(doc.ref);
+            deletedCount++;
+        });
+
+        if (deletedCount > 0) {
+            await batch.commit();
+            console.log(`✅ Cleaned up ${deletedCount} old anonymous profiles`);
+        } else {
+            console.log(`✅ No old anonymous profiles to clean up`);
+        }
+
+        return { success: true, deletedCount: deletedCount };
+    } catch (error) {
+        console.error('❌ Error cleaning up old profiles:', error);
+        return { success: false, message: error.message };
+    }
+}
+
 // Export functions
 if (typeof window !== 'undefined') {
     window.difficultyManager = {
@@ -356,7 +404,8 @@ if (typeof window !== 'undefined') {
         calculateDifficultyMultiplier,
         getDifficultyTier,
         createDefaultProfile,
-        logPlayerProfileMetrics
+        logPlayerProfileMetrics,
+        cleanupOldAnonymousProfiles
     };
 }
 

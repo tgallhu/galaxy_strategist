@@ -494,11 +494,11 @@ const ENEMY_BULLET_DAMAGE = 30;
 // Level-specific powerup drop rates and shooting intensity
 const LEVEL_BALANCE = {
     1: {
-        dropChance: 0.15,        // 15% - Lower since shields are offline
-        livesDropWeight: 0.65,   // 65% lives, 20% shield, 10% ammo, 5% grenade
-        shieldDropWeight: 0.20,
-        ammoDropWeight: 0.10,
-        shootingIntensity: 0.8   // 80% base shooting rate
+        dropChance: 0.25,        // 25% - Higher so beginners get more powerups
+        livesDropWeight: 0.45,   // 45% lives, 15% shield, 30% ammo, 10% grenade
+        shieldDropWeight: 0.15,
+        ammoDropWeight: 0.30,    // 30% ammo drops - much higher for beginners
+        shootingIntensity: 0.5   // 50% base shooting rate - much calmer for beginners
     },
     2: {
         dropChance: 0.25,        // 25% - Higher to sustain shield
@@ -574,8 +574,8 @@ const LEVELS = {
         name: "The Training Grid",
         formationName: "The Wall",
         themeColor: "#00FFFF", // Cyan
-        enemyCount: 50,
-        rows: 5,
+        enemyCount: 30,  // Reduced from 50 to give beginners more time
+        rows: 3,         // Reduced from 5 to 3 rows
         cols: 10,
         enemyType: "normal",
         formation: "wall"
@@ -2740,6 +2740,16 @@ function update() {
                             won: false,
                             ammoUsed: totalAmmoUsed
                         });
+
+                        // Show username prompt after first game for anonymous users
+                        if (window.currentUser && window.currentUser.isAnonymous) {
+                            if (typeof window.showUsernameModal === 'function') {
+                                // Show prompt after a short delay (let them see their score first)
+                                setTimeout(() => {
+                                    window.showUsernameModal();
+                                }, 2000);
+                            }
+                        }
                     } else {
                         console.error('❌ Failed to save score:', result.message);
                         window.lastScoreSaveSuccess = false;
@@ -2933,6 +2943,16 @@ function update() {
                                 won: true,
                                 ammoUsed: totalAmmoUsed
                             });
+
+                            // Show username prompt after first game for anonymous users
+                            if (window.currentUser && window.currentUser.isAnonymous) {
+                                if (typeof window.showUsernameModal === 'function') {
+                                    // Show prompt after a short delay (let them see their victory first)
+                                    setTimeout(() => {
+                                        window.showUsernameModal();
+                                    }, 2000);
+                                }
+                            }
                         } else {
                             console.error('❌ Failed to save score:', result.message);
                             window.lastScoreSaveSuccess = false;
@@ -3267,19 +3287,20 @@ function applyDifficultyAdjustments(multiplier) {
     adjustedGameParams.enemyShootChance = ENEMY_SHOOT_CHANCE * (0.3 + multiplier * 0.7);
     
     // Enemy movement adjustments (slower at default)
-    // At 0.8 multiplier: 1.04x (4% faster), at 1.0: 1.15x (15% faster)
-    adjustedGameParams.enemyBaseSpeedMultiplier = 0.8 + multiplier * 0.35;
-    // At 0.8 multiplier: 0.04 (20% slower), at 1.0: 0.06 (same as before)
-    adjustedGameParams.enemyVerticalDescent = 0.04 * (1.0 + multiplier * 0.5);
-    // At 0.8 multiplier: 7.2px (10% slower), at 1.0: 8px (base)
-    adjustedGameParams.enemyAdvanceSpeed = (ENEMY_HEIGHT / 4) * (0.9 + multiplier * 0.25);
+    // At 0.6 multiplier: 0.71x (29% slower), at 1.0: 1.0x (base speed)
+    adjustedGameParams.enemyBaseSpeedMultiplier = 0.5 + multiplier * 0.5;
+    // At 0.6 multiplier: 0.012 (very slow drift), at 1.0: 0.04 (normal), at 2.0: 0.08 (fast)
+    // Beginners get minimal downward drift to give them time to fight
+    adjustedGameParams.enemyVerticalDescent = Math.max(0.01, 0.02 * multiplier);
+    // At 0.6 multiplier: 5.4px (much slower), at 1.0: 8px (base)
+    adjustedGameParams.enemyAdvanceSpeed = (ENEMY_HEIGHT / 4) * (0.675 + multiplier * 0.4);
     
     // Enemy bullet adjustments (slower at default)
-    // Formula: At 0.6 multiplier: 2.4 (slowest), at 1.0: 3.0 (base), scales up from there
-    // At 0.6 multiplier: 2.4 (20% slower), at 1.0: 3.0 (base), at 1.3: 3.45 (15% faster)
-    adjustedGameParams.enemyBulletSpeed = ENEMY_BULLET_SPEED * (0.75 + multiplier * 0.25);
-    // At 0.8 multiplier: 24 (20% less damage), at 1.0: 27 (10% less)
-    adjustedGameParams.enemyBulletDamage = ENEMY_BULLET_DAMAGE * (0.8 + multiplier * 0.3);
+    // Formula: At 0.6 multiplier: 1.68 (44% slower), at 1.0: 2.4 (20% slower), at 1.5: 3.0 (base), at 2.5: 4.2 (40% faster)
+    // Bullets stay much slower until expert tier to give players more time to react
+    adjustedGameParams.enemyBulletSpeed = ENEMY_BULLET_SPEED * (0.4 + multiplier * 0.6);
+    // At 0.6 multiplier: 21 (30% less damage), at 1.0: 27 (10% less)
+    adjustedGameParams.enemyBulletDamage = ENEMY_BULLET_DAMAGE * (0.7 + multiplier * 0.3);
     
     // Sentinel shield adjustments (more hits = harder)
     adjustedGameParams.sentinelShieldHits = 2 + Math.floor(multiplier * 0.5);

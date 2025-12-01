@@ -17,10 +17,26 @@
         <div style="margin: 5px 0;">
             <a href="index.html" style="color: #00FFFF; text-decoration: none; margin: 0 15px; padding: 5px 15px; border: 1px solid #00FFFF;">🎮 PLAY</a>
             <a href="leaderboard.html" style="color: #00FFFF; text-decoration: none; margin: 0 15px; padding: 5px 15px; border: 1px solid #00FFFF;">📊 LEADERBOARD</a>
+            <button id="changeNameBtn" style="color: #00FFFF; background: transparent; text-decoration: none; margin: 0 15px; padding: 5px 15px; border: 1px solid #00FFFF; cursor: pointer; font-family: 'Courier New', monospace;">👤 CHANGE NAME</button>
         </div>
+        <div id="currentPlayerName" style="color: #888; font-size: 12px; margin-top: 5px;">Playing as: <span id="playerNameDisplay"></span></div>
     </div>
     <canvas id="gameCanvas" width="800" height="700"></canvas>
-    
+
+    <!-- Username Prompt Modal -->
+    <div id="usernameModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;">
+        <div style="background-color: #000015; border: 3px solid #00FFFF; border-radius: 10px; padding: 30px; max-width: 400px; width: 90%; text-align: center;">
+            <h2 style="color: #00FFFF; margin-top: 0;">Save Your Name!</h2>
+            <p style="color: #888; font-size: 14px; margin-bottom: 20px;">Want to save your progress and appear on the leaderboard with your name?</p>
+            <p id="currentNameDisplay" style="color: #666; font-size: 12px; margin-bottom: 15px;"></p>
+            <input type="text" id="usernameInput" placeholder="Enter your name..." style="width: 100%; padding: 12px; background-color: #111; border: 2px solid #00FFFF; color: #fff; font-family: 'Courier New', monospace; font-size: 16px; border-radius: 5px; box-sizing: border-box; margin-bottom: 15px;" />
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button id="skipNameBtn" style="padding: 12px 24px; background-color: #333; color: #888; border: none; font-family: 'Courier New', monospace; font-size: 14px; cursor: pointer; border-radius: 5px;">Skip</button>
+                <button id="saveNameBtn" style="padding: 12px 24px; background-color: #00FFFF; color: #000; border: none; font-family: 'Courier New', monospace; font-size: 14px; font-weight: bold; cursor: pointer; border-radius: 5px;">Save Name</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Authentication and Configuration -->
     <script src="whitelist.js?v=3"></script>
     <script src="auth.js?v=3"></script>
@@ -36,29 +52,138 @@
     
     <!-- Auth Check -->
     <script>
-        // Check authentication on page load
-        const currentUser = getCurrentUser();
+        // Check authentication on page load - auto-login if not logged in
+        let currentUser = getCurrentUser();
         if (!currentUser) {
-            // Not logged in, redirect to login
-            window.location.href = 'login.html';
-        } else {
-            // Initialize Firebase
-            initFirestore();
+            // Auto-login with generated player name
+            currentUser = autoLogin();
+            console.log('🎮 New anonymous user created:', currentUser.name);
+        }
 
-            // Make user info available to game
-            window.currentUser = currentUser;
+        // Initialize Firebase
+        initFirestore();
 
-            // Send welcome notification for first-time users
-            if (currentUser.needsWelcomeNotification) {
-                // Wait for notifications.js to load and initialize
-                window.addEventListener('load', () => {
-                    setTimeout(() => {
-                        if (typeof sendWelcomeNotification !== 'undefined') {
-                            sendWelcomeNotification(currentUser.name);
+        // Make user info available to game
+        window.currentUser = currentUser;
+
+        // Update player name display
+        function updatePlayerNameDisplay() {
+            const nameDisplay = document.getElementById('playerNameDisplay');
+            if (nameDisplay && window.currentUser) {
+                nameDisplay.textContent = window.currentUser.name;
+                nameDisplay.style.color = window.currentUser.isAnonymous ? '#FF6600' : '#00FF00';
+            }
+        }
+
+        // Show username modal
+        function showUsernameModal() {
+            const modal = document.getElementById('usernameModal');
+            const currentNameDisplay = document.getElementById('currentNameDisplay');
+            const usernameInput = document.getElementById('usernameInput');
+
+            if (modal && currentNameDisplay && usernameInput) {
+                currentNameDisplay.textContent = `Currently playing as: ${window.currentUser.name}`;
+                usernameInput.value = '';
+                modal.style.display = 'flex';
+                usernameInput.focus();
+            }
+        }
+
+        // Hide username modal
+        function hideUsernameModal() {
+            const modal = document.getElementById('usernameModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        // Handle username save
+        async function handleUsernameSave() {
+            const usernameInput = document.getElementById('usernameInput');
+            const newName = usernameInput.value.trim();
+
+            if (!newName) {
+                alert('Please enter a name!');
+                return;
+            }
+
+            // Update username
+            const result = updateUsername(newName);
+
+            if (result.success) {
+                window.currentUser = result.user;
+                updatePlayerNameDisplay();
+                hideUsernameModal();
+
+                // Migrate difficulty profile if needed
+                if (result.needsProfileMigration && typeof window.difficultyManager !== 'undefined') {
+                    console.log(`🔄 Migrating profile: ${result.oldEmail} → ${result.newEmail}`);
+                    try {
+                        const oldProfile = await window.difficultyManager.loadPlayerProfile(result.oldEmail);
+                        if (oldProfile) {
+                            // Update profile with new email and name
+                            oldProfile.email = result.newEmail;
+                            oldProfile.name = newName;
+                            await window.difficultyManager.savePlayerProfile(oldProfile);
+                            console.log('✅ Profile migrated successfully!');
                         }
-                    }, 2000); // Wait 2 seconds for everything to initialize
+                    } catch (error) {
+                        console.error('❌ Error migrating profile:', error);
+                    }
+                }
+
+                alert(`Welcome, ${newName}! Your progress will now be saved under this name.`);
+            } else {
+                alert(result.message || 'Failed to update name');
+            }
+        }
+
+        // Setup event listeners when page loads
+        window.addEventListener('load', () => {
+            updatePlayerNameDisplay();
+
+            // Change name button
+            const changeNameBtn = document.getElementById('changeNameBtn');
+            if (changeNameBtn) {
+                changeNameBtn.addEventListener('click', showUsernameModal);
+            }
+
+            // Save name button
+            const saveNameBtn = document.getElementById('saveNameBtn');
+            if (saveNameBtn) {
+                saveNameBtn.addEventListener('click', handleUsernameSave);
+            }
+
+            // Skip button
+            const skipNameBtn = document.getElementById('skipNameBtn');
+            if (skipNameBtn) {
+                skipNameBtn.addEventListener('click', hideUsernameModal);
+            }
+
+            // Enter key on input
+            const usernameInput = document.getElementById('usernameInput');
+            if (usernameInput) {
+                usernameInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        handleUsernameSave();
+                    }
                 });
             }
+        });
+
+        // Make function available to game.js
+        window.showUsernameModal = showUsernameModal;
+
+        // Send welcome notification for first-time users
+        if (currentUser.needsWelcomeNotification) {
+            // Wait for notifications.js to load and initialize
+            window.addEventListener('load', () => {
+                setTimeout(() => {
+                    if (typeof sendWelcomeNotification !== 'undefined') {
+                        sendWelcomeNotification(currentUser.name);
+                    }
+                }, 2000); // Wait 2 seconds for everything to initialize
+            });
         }
     </script>
 </body>

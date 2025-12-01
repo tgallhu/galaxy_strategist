@@ -128,6 +128,17 @@
             font-weight: bold;
             color: #fff;
         }
+
+        .player-name.anonymous {
+            color: #FF6600;
+            font-style: italic;
+        }
+
+        .anonymous-hint {
+            font-size: 11px;
+            color: #888;
+            margin-left: 8px;
+        }
         
         .score {
             font-size: 20px;
@@ -448,7 +459,12 @@
                     const playerName = scoreData.name || 'Unknown';
                     const playerEmail = scoreData.email || 'unknown';
                     let avatarUrl;
-                    
+
+                    // Check if this is an anonymous player (PlayerN format)
+                    const isAnonymous = /^Player\d+$/i.test(playerName) || playerEmail.includes('@auto.generated');
+                    const anonymousClass = isAnonymous ? 'anonymous' : '';
+                    const anonymousHint = isAnonymous ? '<span class="anonymous-hint">(set your name!)</span>' : '';
+
                     try {
                         avatarUrl = getRetroAvatar(playerName || playerEmail);
                     } catch (e) {
@@ -457,7 +473,7 @@
                         canvas.width = 50;
                         canvas.height = 50;
                         const ctx = canvas.getContext('2d');
-                        ctx.fillStyle = '#00FFFF';
+                        ctx.fillStyle = isAnonymous ? '#FF6600' : '#00FFFF';
                         ctx.fillRect(0, 0, 50, 50);
                         ctx.fillStyle = '#000';
                         ctx.font = 'bold 24px Courier New';
@@ -466,12 +482,12 @@
                         ctx.fillText((playerName || '?').charAt(0).toUpperCase(), 25, 25);
                         avatarUrl = canvas.toDataURL();
                     }
-                    
+
                     entry.innerHTML = `
                         <div class="rank ${rankClass}">${rankSymbol}</div>
                         <div class="player-info">
                             <img src="${avatarUrl}" alt="${escapeHtml(playerName)}" class="avatar">
-                            <div class="player-name">${escapeHtml(playerName)}</div>
+                            <div class="player-name ${anonymousClass}">${escapeHtml(playerName)}${anonymousHint}</div>
                         </div>
                         <div class="score">${(scoreData.score || 0).toLocaleString()}</div>
                         <div class="date">${dateStr}</div>
@@ -627,6 +643,8 @@
                     }
 
                     const playerName = data.name || 'Unknown';
+                    const isAnonymous = /^Player\d+$/i.test(playerName) || (data.email && data.email.includes('@auto.generated'));
+                    const anonymousStyle = isAnonymous ? 'style="color: #FF6600; font-style: italic;"' : '';
                     const timeValue = formatTime(data.timeSeconds || 0);
                     const barWidth = ((data.timeSeconds || 999) / (fastestTime * 3)) * 100; // Inverse for time (faster = wider)
                     const inverseBarWidth = Math.max(5, 100 - barWidth); // Flip it so faster times have wider bars
@@ -634,7 +652,7 @@
                     entry.innerHTML = `
                         <div class="chart-rank ${rankClass}">${rankSymbol}</div>
                         <div class="chart-player">
-                            <div class="chart-player-name">${escapeHtml(playerName)}</div>
+                            <div class="chart-player-name" ${anonymousStyle}>${escapeHtml(playerName)}</div>
                             <div class="chart-bar">
                                 <div class="chart-bar-fill speed-bar-fill" style="width: ${inverseBarWidth}%"></div>
                             </div>
@@ -750,13 +768,15 @@
                     }
 
                     const playerName = data.name || 'Unknown';
+                    const isAnonymous = /^Player\d+$/i.test(playerName) || (data.email && data.email.includes('@auto.generated'));
+                    const anonymousStyle = isAnonymous ? 'style="color: #FF6600; font-style: italic;"' : '';
                     const efficiencyValue = data.efficiency.toFixed(1);
                     const barWidth = Math.max(5, (data.efficiency / highestEfficiency) * 100);
 
                     entry.innerHTML = `
                         <div class="chart-rank ${rankClass}">${rankSymbol}</div>
                         <div class="chart-player">
-                            <div class="chart-player-name">${escapeHtml(playerName)}</div>
+                            <div class="chart-player-name" ${anonymousStyle}>${escapeHtml(playerName)}</div>
                             <div class="chart-bar">
                                 <div class="chart-bar-fill efficiency-bar-fill" style="width: ${barWidth}%"></div>
                             </div>
